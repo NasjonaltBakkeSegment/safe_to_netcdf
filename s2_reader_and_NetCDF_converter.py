@@ -78,7 +78,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # 1) Fetch main file
         self.xmlFiles['manifest'] = self.uncompress('manifest.safe')
-        print(self.xmlFiles['manifest'])
+        print((self.xmlFiles['manifest']))
         if not self.xmlFiles['manifest']:
             print("\nNo manifest.safe file. Most likely S2 L1C Norwegian DEM product")
             self.dterrengdata = True
@@ -129,7 +129,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # zipfile already extracted find main xmlfile
             files_according_to_xmlReturn = glob(fdirName + '/' + xmlReturn)
             if len(files_according_to_xmlReturn) != 1:
-                print('Did not find a file similar to: %s' % xmlReturn)
+                print(('Did not find a file similar to: %s' % xmlReturn))
                 return False
             else:
                 xmlFile = files_according_to_xmlReturn[0]
@@ -139,19 +139,19 @@ class Sentinel2_reader_and_NetCDF_converter:
             #cmd = '/usr/bin/unzip %s/%s' % (OUTDIR,zipfile)
             subprocess.call(cmd, shell=True)
             if os.path.isdir(fdirName) == False:
-                print('Error unzipping file %s' % (SAFE_file))
+                print(('Error unzipping file %s' % (SAFE_file)))
                 return False
 
             else:
                 files_according_to_xmlReturn = glob(fdirName + '/' + xmlReturn)
                 if len(files_according_to_xmlReturn) != 1:
-                    print('Did not find a file similar to: %s' % xmlReturn)
+                    print(('Did not find a file similar to: %s' % xmlReturn))
                     return False
                 else:
                     xmlFile = files_according_to_xmlReturn[0]
 
         if os.path.isfile(xmlFile) == False:
-            print('Error unzipping file %s' % (SAFE_file))
+            print(('Error unzipping file %s' % (SAFE_file)))
             return False
 
         self.SAFE_path = fdirName
@@ -183,7 +183,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 self.imageFiles[repID] = href
 
         # Set processing level
-        for k in self.xmlFiles.keys():
+        for k in list(self.xmlFiles.keys()):
             if "Level-1C" in k:
                 self.processing_level = "Level-1C"
                 break
@@ -197,7 +197,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # Set gdal object
         self.src = gdal.Open(str(fdirName +self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)]))
-        print(self.src)
+        print((self.src))
 
         # Set global metadata attributes from gdal
         self.globalAttribs = self.src.GetMetadata()
@@ -249,7 +249,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         # Status
         print('\nCreating NetCDF file')
         self.memoryUsage()
-        print(datetime.now() - self.t0)
+        print((datetime.now() - self.t0))
 
         # Deciding a reference band
         for k,v in self.src.GetSubDatasets():
@@ -303,7 +303,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding projection coordinates')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
             xnp,ynp = self.genLatLon(nx,ny, latlon=False) #Assume gcps are on a regular grid
 
@@ -325,7 +325,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding frequency bands layers')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
             if not self.dterrengdata:
                 for k,v in self.src.GetSubDatasets():
@@ -355,13 +355,13 @@ class Sentinel2_reader_and_NetCDF_converter:
                             varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
                             varout._Unsigned="true"
                             #varout.scale_factor = 0.0001 # 1/(quanitification value) converts from DN to reflectance
-                            print(varName,subdataset_geotransform)
+                            print((varName,subdataset_geotransform))
                             if subdataset_geotransform[1] != 10:
                                 current_size = current_band.XSize
                                 band_measurement = scipy.ndimage.zoom(input=current_band.GetVirtualMemArray(), zoom=nx/current_size, order=0)
                             else:
                                 band_measurement = current_band.GetVirtualMemArray()
-                            print(band_measurement.shape)
+                            print((band_measurement.shape))
 
                             #varout[0,:,:] = band_measurement
 
@@ -457,9 +457,9 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding vector layers')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
-            for layer,path in self.vectorInformation.items():
+            for layer,path in list(self.vectorInformation.items()):
                 if path:
                     output_file = str(self.SAFE_path + '/tmp/' + layer + '.tiff')
                     rasterized_ok, layer_mask = self.rasterizeVectorLayers(nx, ny, layer, path, output_file)
@@ -489,7 +489,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             if self.processing_level=='Level-2A':
                 print('\nAdding Level-2A specific layers')
                 self.memoryUsage()
-                print(datetime.now() - self.t0)
+                print((datetime.now() - self.t0))
                 l2a_layers = {"MSK_CLDPRB_20m":"MSK_CLDPRB, Cloud Probabilities",
                               "MSK_SNWPRB_20m":"MSK_SNWPRB, Snow Probabilities",
                               'IMG_DATA_Band_AOT_10m_Tile1_Data':"AOT, Aerosol Optical Thickness",
@@ -509,17 +509,17 @@ class Sentinel2_reader_and_NetCDF_converter:
                 gdal_nc_data_types = {'Byte':'u1','UInt16':'u2'}
 
                 l2a_kv = {}
-                for layer in l2a_layers.keys():
-                    for k,v in self.imageFiles.items():
+                for layer in list(l2a_layers.keys()):
+                    for k,v in list(self.imageFiles.items()):
                         if layer in k:
                             l2a_kv[k] =l2a_layers[k]
                         elif layer in v:
-                            print(layer,v,k)
+                            print((layer,v,k))
                             l2a_kv[k] =l2a_layers[layer]
 
 
-                for k,v in l2a_kv.items():
-                    print(k,v)
+                for k,v in list(l2a_kv.items()):
+                    print((k,v))
                     varName, longName = v.split(',')
                     SourceDS = gdal.Open(self.SAFE_path + self.imageFiles[k], gdal.GA_ReadOnly)
                     if SourceDS.RasterCount>1:
@@ -552,11 +552,11 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding sun and view angles')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
             counter = 1
-            for k,v in self.sunAndViewAngles.items():
-                print("\tHandeling %i of %i" %(counter, len(self.sunAndViewAngles)))
+            for k,v in list(self.sunAndViewAngles.items()):
+                print(("\tHandeling %i of %i" %(counter, len(self.sunAndViewAngles))))
                 angle_step = int(math.ceil(nx/float(v.shape[0])))
 
                 resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step, type=np.float32)
@@ -580,9 +580,9 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding XML files as character variables')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
-            for k,f in self.xmlFiles.items():
+            for k,f in list(self.xmlFiles.items()):
                 if f:
                     if f.endswith('.xml'):
                         if not self.dterrengdata:
@@ -616,7 +616,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding satellite orbit specific data')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
             platform_id = {"Sentinel-2A":0, "Sentinel-2B":1,
                            "Sentinel-2C":2,"Sentinel-2D":3,}
@@ -647,7 +647,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nAdding global attributes')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
             nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
             ncout.title =  'Sentinel-2 {} data'.format(self.processing_level)
@@ -670,7 +670,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             print('\nFinished.')
             self.memoryUsage()
-            print(datetime.now() - self.t0)
+            print((datetime.now() - self.t0))
 
         if os.path.isfile(out_netcdf):
             return True
@@ -682,20 +682,20 @@ class Sentinel2_reader_and_NetCDF_converter:
             string.
         """
         if os.path.isfile(xmlfile) == False:
-            print('Error: Can\'t find xmlfile %s' % (xmlfile))
+            print(('Error: Can\'t find xmlfile %s' % (xmlfile)))
             return False
         try:
             parser = ET.XMLParser(recover=True)
             tree = ET.parse(xmlfile,parser)
             return ET.tostring(tree)
         except:
-            print("Could not parse %s as xmlFile. Try to open regularly." % xmlfile)
+            print(("Could not parse %s as xmlFile. Try to open regularly." % xmlfile))
             with open(xmlfile, 'r') as infile:
                 text = infile.read()
             if text:
                 return text
             else:
-                print("Could not parse %s. Something wrong with file." % xmlfile)
+                print(("Could not parse %s. Something wrong with file." % xmlfile))
                 return False
 
     def readSunAndViewAngles(self,xmlfile):
@@ -704,7 +704,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         """
 
         if os.path.isfile(xmlfile) == False:
-            print('Error: Can\'t find xmlfile %s' % (xmlfile))
+            print(('Error: Can\'t find xmlfile %s' % (xmlfile)))
             return False
         tree = ET.parse(xmlfile)
         root = tree.getroot()
@@ -792,7 +792,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         gmlID = gmlfile.split('/')[-1].split('.')[0]
 
         if os.path.isfile(gmlfile) == False:
-            print('Error: Can\'t find gmlfile %s' % (gmlfile))
+            print(('Error: Can\'t find gmlfile %s' % (gmlfile)))
             return gmlID, False
 
 
@@ -803,7 +803,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             try:
                 os.makedirs(os.path.dirname(output_dir))
             except:
-                print("Could not make directory: %s" %output_dir)
+                print(("Could not make directory: %s" %output_dir))
 
         destName = str(output_dir + gmlID + '.shp')
 
@@ -937,7 +937,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
     def memoryUsage(self):
         max_memory = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000.
-        print("Memory usage so far: %f Gb" % max_memory)
+        print(("Memory usage so far: %f Gb" % max_memory))
 
     def deleteProducts(self, zipped_file=False,safe_file=False):
         """ Method for deletion of extracted temporary .SAFE product """
@@ -945,12 +945,12 @@ class Sentinel2_reader_and_NetCDF_converter:
         if zipped_file:
             if os.path.isfile(self.SAFE_file):
                 os.remove(self.SAFE_file)
-                print("Deleted:  %s" % self.SAFE_file)
+                print(("Deleted:  %s" % self.SAFE_file))
 
         if safe_file:
             if os.path.exists(os.path.dirname(self.SAFE_path)):
                 shutil.rmtree(self.SAFE_path)
-                print("Deleted:  %s" % self.SAFE_path)
+                print(("Deleted:  %s" % self.SAFE_path))
 
 
     def list_product_structure(self, startpath=None):

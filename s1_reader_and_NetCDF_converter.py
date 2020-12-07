@@ -18,7 +18,7 @@ import shutil
 import argparse
 import zipfile
 import resource
-import urllib2, urllib
+import urllib.request, urllib.error, urllib.parse, urllib.request, urllib.parse, urllib.error
 import lxml.etree as ET
 import osgeo.ogr as ogr
 import osgeo.osr as osr
@@ -266,7 +266,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                     counter += 1
             self.productMetadataList[polarisation][listType] = swathBoundsList
         else:
-            print "Extraction of %s is not implemented" %listType
+            print("Extraction of %s is not implemented" %listType)
 
     def uncompress(self):
         """ Uncompress SAFE zip file. Return manifest file """
@@ -282,14 +282,14 @@ class Sentinel1_reader_and_NetCDF_converter:
             #cmd = '/usr/bin/unzip %s/%s' % (OUTDIR,zipfile)
             subprocess.call(cmd, shell=True)
             if os.path.isdir(fdirName) == False:
-                print 'Error unzipping file %s' % (SAFE_file)
+                print('Error unzipping file %s' % (SAFE_file))
                 sys.exit()
 
             else:
                 xmlFile = glob(fdirName+'/manifest.safe')[0]
 
         if os.path.isfile(xmlFile) == False:
-            print 'Error unzipping file %s' % (SAFE_file)
+            print('Error unzipping file %s' % (SAFE_file))
             sys.exit()
 
         self.SAFE_path = fdirName
@@ -309,9 +309,9 @@ class Sentinel1_reader_and_NetCDF_converter:
             href = None
             for element in dataObject.iter():
                 attrib = element.attrib
-                if attrib.has_key('mimeType'):
+                if 'mimeType' in attrib:
                     ftype = attrib['mimeType']
-                if attrib.has_key('href'):
+                if 'href' in attrib:
                     href = attrib['href'][1:]
             if ftype == 'text/xml' and href:
                 self.xmlFiles[repID].append(href)
@@ -351,13 +351,13 @@ class Sentinel1_reader_and_NetCDF_converter:
         compression_level -- compression level on output NetCDF file (1-9)
         """
 
-        print "------------START CONVERSION FROM SAFE TO NETCDF-------------"
+        print("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
         # Status
         print('\nCreating NetCDF file')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         out_netcdf = '%s%s.nc' % (nc_outpath,self.SAFE_id)
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
@@ -382,8 +382,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nCreating latitude longitude')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         lat,lon = self.genLatLon_regGrid() #Assume gcps are on a regular grid
         nclat.long_name = 'latitude'
@@ -401,8 +401,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding raw measurement layers')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         for i in range(1,self.src.RasterCount+1):
             band = self.src.GetRasterBand(i)
@@ -418,7 +418,7 @@ class Sentinel1_reader_and_NetCDF_converter:
             var.grid_mapping = "crsWGS84" ;
             var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
             var.polarisation = "%s" %  band_metadata['POLARISATION']
-            print(band.GetVirtualMemArray().shape)
+            print((band.GetVirtualMemArray().shape))
             var[0,:,:] = band.GetVirtualMemArray()
 
         # set grid mapping(?)
@@ -433,8 +433,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding calibration layers')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         for i, calibration in enumerate(self.xmlCalLUTs.keys()):
             current_polarisation = calibration.split('_')[-1]
@@ -456,8 +456,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding noise layers')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         for polarisation in self.polarisation:
             noiseCorrectionMatrix = self.getNoiseCorrectionMatrix(self.noiseVectors[polarisation],
@@ -477,8 +477,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding subswath layers')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         for polarisation in self.polarisation:
             swathLayer, flags = self.getSwathList(polarisation)
@@ -505,8 +505,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding GCP information')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
 
         gcp_units = {'slantRangeTime':'s', 'latitude':'degrees', 'longitude':'degrees',
@@ -521,7 +521,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                           'incidenceAngle':'Incidence angle to grid point.',
                           'elevationAngle':'Elevation angle to grid point.'}
         dim_gcp = ncout.createDimension('gcp_index',len(self.gcps))
-        for key, value in self.xmlGCPs.iteritems():
+        for key, value in self.xmlGCPs.items():
             current_variable = key.split('_')[0]
             if current_variable == 'azimuthTime':
                 var = ncout.createVariable(str('GCP_%s' % key),'f4',('gcp_index'), zlib=True)
@@ -533,7 +533,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                 var.comment = 'Seconds since %s' % ref_date.strftime('%Y-%m-%dT%H:%M:%S.%f')
             else:
                 var = ncout.createVariable(str('GCP_%s' % key),value.dtype,('gcp_index'), zlib=True)
-                if gcp_units.has_key(current_variable):
+                if current_variable in gcp_units:
                     var.units = gcp_units[current_variable]
                 var.long_name = gcp_long_name[current_variable]
             var[:] = value
@@ -543,10 +543,10 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding annotation information')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
-        for polarisation in self.productMetadata.keys():
+        for polarisation in list(self.productMetadata.keys()):
             varBaseName = str('s1Level1ProductSchema_' + polarisation)
             productMetadata = self.productMetadata[polarisation]
             var = ncout.createVariable(varBaseName, 'i1')
@@ -558,8 +558,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding annotation list information')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         productMetadataListComment = {'swathMergeList':'index:{swath:[firstAzimuthLine, firstRangeSample, lastAzimuthLine, lastRangeSample, azimuthTime]}',
                                       'orbitList':'time:[frame, position (x,y,z), velocity (x,y,z)]',
@@ -570,13 +570,13 @@ class Sentinel1_reader_and_NetCDF_converter:
         productMetadataListDatatype = {'swathMergeList':'index:uint16 , firstAzimuthLine:unit32 , firstRangeSample:unit32 , lastAzimuthLine:uint32 , lastRangeSample:uint32 , azimuthTime: UTC'}
 
 
-        for polarisation in self.productMetadataList.keys():
-            for subkey in self.productMetadataList[polarisation].keys():
+        for polarisation in list(self.productMetadataList.keys()):
+            for subkey in list(self.productMetadataList[polarisation].keys()):
                 varBaseName = str(subkey + '_' + polarisation)
                 if True:
                     productMetadataList = self.productMetadataList[polarisation][subkey]
                     tmp_dict = {}
-                    for k,v in productMetadataList.iteritems():
+                    for k,v in productMetadataList.items():
                         tmp_dict[str(k)] = str(v)
                     var = ncout.createVariable(varBaseName, 'i1')
                     var.comment = productMetadataListComment[subkey]
@@ -588,8 +588,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         print('\nAdding global attributes')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
 
         nowstr = time.strftime( "%Y-%m-%dT%H:%M:%SZ", [self.t0.year,
@@ -614,8 +614,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         ncout.close()
         print('\nFinished.')
         memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000000)
-        print memoryUsage
-        print datetime.now() - self.t0
+        print(memoryUsage)
+        print(datetime.now() - self.t0)
 
         if os.path.isfile(out_netcdf):
             return True
@@ -659,7 +659,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         """
 
         if os.path.isfile(xmlfile) == False:
-            print 'Error: Can\'t find xmlfile %s' % (xmlfile)
+            print('Error: Can\'t find xmlfile %s' % (xmlfile))
             return False
         tree = ET.parse(xmlfile)
         root = tree.getroot()
@@ -751,7 +751,7 @@ class Sentinel1_reader_and_NetCDF_converter:
     def readPixelsLines(self,xmlfile):
 
         if os.path.isfile(xmlfile) == False:
-            print 'Error: Can\'t find xmlfile %s' % (xmlfile)
+            print('Error: Can\'t find xmlfile %s' % (xmlfile))
             return -1
 
         tree = ET.parse(xmlfile)
@@ -777,14 +777,14 @@ class Sentinel1_reader_and_NetCDF_converter:
             numLine+=1
 
         if len(lines) != len(pixels):
-            print 'Error: Wrong size of arrays. legth of pixels and lines should be the same pixels=%d lines=%d' % (len(pixels),len(lines))
+            print('Error: Wrong size of arrays. legth of pixels and lines should be the same pixels=%d lines=%d' % (len(pixels),len(lines)))
             return -1
 
         return (polarisation,pixels,lines)
 
     def getCalTable(self,xmlfile,tName):
         if os.path.isfile(xmlfile) == False:
-            print 'Error: Can\'t find xmlfile %s' % (xmlfile)
+            print('Error: Can\'t find xmlfile %s' % (xmlfile))
             return -1
 
         tree = ET.parse(xmlfile)
@@ -807,15 +807,15 @@ class Sentinel1_reader_and_NetCDF_converter:
         nb_lines = (lines==0).sum()
         calibration_table = cal_table.reshape(nb_pixels,nb_lines)
         tck = interpolate.RectBivariateSpline(lines[0::nb_lines],pixels[0:nb_lines],calibration_table)
-        x = range(0, xSize)
-        y = range(0, ySize)
+        x = list(range(0, xSize))
+        y = list(range(0, ySize))
         lutOut= tck(y,x)
         return lutOut
 
     def getGCPValues(self, xmlfile, parameter):
         """ Method for retrieving Geo Location Point parameter from xml file."""
         if os.path.isfile(xmlfile) == False:
-            print 'Error: Can\'t find xmlfile %s' % (xmlfile)
+            print('Error: Can\'t find xmlfile %s' % (xmlfile))
             return -1
 
         tree = ET.parse(xmlfile)
@@ -866,8 +866,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         lat = np.array(lat,np.float32)
         lon = np.array(lon,np.float32)
 
-        xi = range(0,xsize)
-        yi = range(0,ysize)
+        xi = list(range(0,xsize))
+        yi = list(range(0,ysize))
         tck = interpolate.RectBivariateSpline(y,x,lat.reshape(len(y),len(x)))
         latitude = tck(yi,xi)
         tck = interpolate.RectBivariateSpline(y,x,lon.reshape(len(y),len(x)))
@@ -884,7 +884,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                            values retrieved from the readNoiseData method.
         """
         noiseRangeVectorList = noiseVector['range']
-        if noiseVector.has_key('azimuth'):
+        if 'azimuth' in noiseVector:
             noiseAzimuthVectorList = noiseVector['azimuth']
         else:
             noiseAzimuthVectorList = noiseVector['swathBounds']
@@ -892,11 +892,11 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         # Set swath list (i.e. unique swath IDs)
         swathList = np.array([])
-        for noiseAzimuthVector in noiseAzimuthVectorList.values():
-            swathList = np.append(swathList,noiseAzimuthVector.keys())
+        for noiseAzimuthVector in list(noiseAzimuthVectorList.values()):
+            swathList = np.append(swathList,list(noiseAzimuthVector.keys()))
 
         swathList, swathListCounts = np.unique(swathList,return_counts=True)
-        swathList = dict(zip(swathList, swathListCounts))
+        swathList = dict(list(zip(swathList, swathListCounts)))
         return swathList
 
     def getSwathList(self, polarisation):
@@ -914,12 +914,12 @@ class Sentinel1_reader_and_NetCDF_converter:
         elif self.globalAttribs['MODE'] == 'IW':
             subswath_flag = {'IW1': 1,'IW2': 2, 'IW3': 3}
         else:
-            print "Undefined mode %s" % self.globalAttribs['MODE']
+            print("Undefined mode %s" % self.globalAttribs['MODE'])
             return 0
 
         swathListRaster = np.zeros((self.ySize,self.xSize))
-        for index,subswath in swathMergeList.iteritems():
-            for key, value in  subswath.iteritems():
+        for index,subswath in swathMergeList.items():
+            for key, value in  subswath.items():
                 firstAzimuthLine, firstRangeSample, lastAzimuthLine, lastRangeSample, azimuthTime = value
                 firstAzimuthLine = int(firstAzimuthLine)
                 firstRangeSample = int(firstRangeSample)
@@ -990,7 +990,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         imageAnnotation = self.imageAnnotation[polarisation]
 
         old_convention = False
-        if noiseAzimuthAndRangeVectorList.has_key('swathBounds'): #old NADS
+        if 'swathBounds' in noiseAzimuthAndRangeVectorList: #old NADS
             noiseAzimuthVectorList = noiseAzimuthAndRangeVectorList['swathBounds']
             old_convention = True
         else:
@@ -1005,11 +1005,11 @@ class Sentinel1_reader_and_NetCDF_converter:
         noiseRangeMatrix = np.zeros((self.ySize,self.xSize))
 
         # Deciding current swath time interval
-        for swath_, swathCount_ in swathList.iteritems():
+        for swath_, swathCount_ in swathList.items():
             currentSwathStartTime = None
             currentSwathEndTime = None
-            for noiseAzimuthVector_id, noiseAzimuthVector in noiseAzimuthVectorList.iteritems():
-                if noiseAzimuthVector.has_key(swath_):
+            for noiseAzimuthVector_id, noiseAzimuthVector in noiseAzimuthVectorList.items():
+                if swath_ in noiseAzimuthVector:
                     values = noiseAzimuthVector[swath_]
                     firstAzimuthLine = int(values[0])
                     lastAzimuthLine = int(values[2])
@@ -1031,11 +1031,11 @@ class Sentinel1_reader_and_NetCDF_converter:
                         if currentSwathEndTime < noiseAzimuthVectorStop:
                             currentSwathEndTime = noiseAzimuthVectorStop
 
-        for swath_,swathCount_ in swathList.iteritems():
+        for swath_,swathCount_ in swathList.items():
 
             # STEP 1
-            for noiseAzimuthVector_id, noiseAzimuthVector in noiseAzimuthVectorList.iteritems():
-                if noiseAzimuthVector.has_key(swath_):
+            for noiseAzimuthVector_id, noiseAzimuthVector in noiseAzimuthVectorList.items():
+                if swath_ in noiseAzimuthVector:
                     values = noiseAzimuthVector[swath_]
                     firstAzimuthLine = int(values[0])
                     lastAzimuthLine = int(values[2])
@@ -1122,7 +1122,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                     noiseRangeMatrix[lineIndex[0]:lineIndex[-1]+1,sampleIndex[0]:sampleIndex[-1]+1] = noiseRangeMatrix_.T
 
         noiseCorrectionMatrix_ =  noiseRangeMatrix * noiseAzimuthMatrix
-        print "Created noise correction matrix in: ", datetime.now() - t0_duration
+        print("Created noise correction matrix in: ", datetime.now() - t0_duration)
         return noiseCorrectionMatrix_
 
     def deleteProducts(self, zipped_file=False,safe_file=False):
@@ -1131,12 +1131,12 @@ class Sentinel1_reader_and_NetCDF_converter:
         if zipped_file:
             if os.path.isfile(self.SAFE_file):
                 os.remove(self.SAFE_file)
-                print "Deleted:  %s" % self.SAFE_file
+                print("Deleted:  %s" % self.SAFE_file)
 
         if safe_file:
             if os.path.exists(os.path.dirname(self.SAFE_path)):
                 shutil.rmtree(self.SAFE_path)
-                print "Deleted:  %s" % self.SAFE_path
+                print("Deleted:  %s" % self.SAFE_path)
 
 if __name__ == '__main__':
 	SAFE_file = '/home/trygveh/documents/satellite_data/Sentinel-1/overlap_EW/S1B_EW_GRDM_1SDH_20190801T103608_20190801T103708_017391_020B3E_A27B.zip'
