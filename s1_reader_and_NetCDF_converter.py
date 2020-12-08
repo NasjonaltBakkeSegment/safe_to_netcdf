@@ -10,8 +10,6 @@
 #
 # Need to use gdal 2.1.1-> to have support of the SAFE reader
 
-import os
-import shutil
 import subprocess
 import sys
 from collections import defaultdict
@@ -348,7 +346,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         utils.memory_use(self.t0)
 
-        out_netcdf = '%s%s.nc' % (nc_outpath, self.product_id)
+        out_netcdf = nc_outpath / self.product_id.with_suffix('.nc')
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
         ncout.createDimension('time', size=None)
         ncout.createDimension('x', self.xSize)
@@ -599,10 +597,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         print('\nFinished.')
         utils.memory_use(self.t0)
 
-        if os.path.isfile(out_netcdf):
-            return True
-        else:
-            return False
+        return out_netcdf.is_file()
 
     def readNoiseData(self, xmlfile):
         """ Method for reading noise data from Sentinel-1 annotation files.
@@ -1122,7 +1117,6 @@ class Sentinel1_reader_and_NetCDF_converter:
                 shutil.rmtree(self.SAFE_dir)
                 print("Deleted:  %s" % self.SAFE_dir)
 
-
 if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
@@ -1139,4 +1133,4 @@ if __name__ == '__main__':
 
         nc_outpath = workdir / 'NetCDF' / 'Sentinel1'
         cl = 7
-        conversion_object.write_to_NetCDF(str(nc_outpath) + '/', cl)
+        conversion_object.write_to_NetCDF(nc_outpath, cl)
