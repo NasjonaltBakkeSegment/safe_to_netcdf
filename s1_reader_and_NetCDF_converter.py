@@ -14,7 +14,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from collections import defaultdict
 from datetime import datetime
 from datetime import timedelta
@@ -366,7 +365,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         nctime.long_name = 'reference time of satellite image'
         nctime.units = 'seconds since 1981-01-01 00:00:00'
         nctime.calendar = 'gregorian'
-        nctime[:] = self.getReferenceTime()
+        nctime[:] = utils.seconds_from_ref(self.globalAttribs["ACQUISITION_START_TIME"])
 
         # Add latitude and longitude layers
         ##########################################################
@@ -797,15 +796,6 @@ class Sentinel1_reader_and_NetCDF_converter:
             out_list.append(l.find(parameter).text)
 
         return polarisation, out_list
-
-    def getReferenceTime(self):
-        """ Method for retrieving Geo Location Point parameter from xml file."""
-        dt = datetime.strptime(self.globalAttribs["ACQUISITION_START_TIME"].split('.')[0],
-                               '%Y-%m-%dT%H:%M:%S')
-        AQ_START = time.mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, 0, 0, 0))
-        dt1981 = time.mktime((1981, 1, 1, 0, 0, 0, 0, 0, 0))
-        delta_t = int(AQ_START - dt1981)
-        return delta_t
 
     def genLatLon_regGrid(self):
         """ Method providing latitude and longitude arrays """

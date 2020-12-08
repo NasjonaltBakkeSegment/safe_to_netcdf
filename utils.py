@@ -41,4 +41,16 @@ def memory_use(start_time):
     print(dt.datetime.now() - start_time)
 
 
+def seconds_from_ref(t):
+    """
+    Computes the difference in seconds between input date and a reference date (01/01/1981)
+    Args:
+        t: date as a string
+    Returns:
+        integer
+    """
+    mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f')
+    mytime_ref = dt.datetime(1981, 1, 1)
+    return int((mytime - mytime_ref).total_seconds())
+
 
