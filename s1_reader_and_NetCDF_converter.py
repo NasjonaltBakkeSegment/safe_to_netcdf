@@ -11,7 +11,6 @@
 # Need to use gdal 2.1.1-> to have support of the SAFE reader
 
 import os
-import resource
 import shutil
 import subprocess
 import sys
@@ -397,9 +396,6 @@ class Sentinel1_reader_and_NetCDF_converter:
             var = ncout.createVariable(varName, 'u2', ('time', 'y', 'x',),
                                        fill_value=0, zlib=True, complevel=compression_level,
                                        chunksizes=chunk_size)
-            #        fill_value=netCDF4.default_fillvals['u2'],zlib=True,
-            #        complevel=compression_level)
-            # var = ncout.createVariable(varName,np.int16,('time','y','x',),
             var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
             var.units = "1"
             var.coordinates = "lat lon"
@@ -422,7 +418,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         print('\nAdding calibration layers')
         utils.memory_use(self.t0)
 
-        for i, calibration in enumerate(self.xmlCalLUTs.keys()):
+        for calibration in self.xmlCalLUTs:
             current_polarisation = calibration.split('_')[-1]
             pixels, lines = self.xmlCalPixelLines[current_polarisation]
             calibration_LUT = self.xmlCalLUTs[calibration]
@@ -529,7 +525,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         print('\nAdding annotation information')
         utils.memory_use(self.t0)
 
-        for polarisation in list(self.productMetadata.keys()):
+        for polarisation in self.productMetadata:
             varBaseName = str('s1Level1ProductSchema_' + polarisation)
             productMetadata = self.productMetadata[polarisation]
             var = ncout.createVariable(varBaseName, 'i1')
@@ -557,8 +553,8 @@ class Sentinel1_reader_and_NetCDF_converter:
             'swathMergeList': 'index:uint16 , firstAzimuthLine:unit32 , firstRangeSample:unit32 , '
                               'lastAzimuthLine:uint32 , lastRangeSample:uint32 , azimuthTime: UTC'}
 
-        for polarisation in list(self.productMetadataList.keys()):
-            for subkey in list(self.productMetadataList[polarisation].keys()):
+        for polarisation in self.productMetadataList:
+            for subkey in self.productMetadataList[polarisation]:
                 varBaseName = str(subkey + '_' + polarisation)
                 if True:
                     productMetadataList = self.productMetadataList[polarisation][subkey]
@@ -949,8 +945,6 @@ class Sentinel1_reader_and_NetCDF_converter:
             "%Y-%m-%dT%H:%M:%S.%f")]
         index = valid_vectors.index(nearest_record[0])
         return nearest_record, index
-        # return [min(valid_vectors, key=lambda x: abs(x - blockCenterTime)).strftime("%Y-%m-%d
-        # %H:%M:%S.%f")]
 
     def getNoiseCorrectionMatrix(self, noiseAzimuthAndRangeVectorList, polarisation):
         """ Returns the thermal noise correction matrix according to the:
@@ -1153,6 +1147,6 @@ if __name__ == '__main__':
             indir=workdir / 'zip' / 'Sentinel1',
             outdir=workdir / 'SAFE')
 
-    nc_outpath = workdir / 'NetCDF' / 'Sentinel1'
-    cl = 7
-    conversion_object.write_to_NetCDF(str(nc_outpath) + '/', cl)
+        nc_outpath = workdir / 'NetCDF' / 'Sentinel1'
+        cl = 7
+        conversion_object.write_to_NetCDF(str(nc_outpath) + '/', cl)
