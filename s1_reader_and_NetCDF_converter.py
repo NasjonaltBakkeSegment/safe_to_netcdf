@@ -1104,18 +1104,6 @@ class Sentinel1_reader_and_NetCDF_converter:
         print("Created noise correction matrix in: ", datetime.now() - t0_duration)
         return noiseCorrectionMatrix_
 
-    def deleteProducts(self, zipped_file=False, safe_file=False):
-        """ Method for deletion of extracted .SAFE product """
-
-        if zipped_file:
-            if os.path.isfile(self.SAFE_file):
-                os.remove(self.SAFE_file)
-                print("Deleted:  %s" % self.SAFE_file)
-
-        if safe_file:
-            if os.path.exists(os.path.dirname(self.SAFE_dir)):
-                shutil.rmtree(self.SAFE_dir)
-                print("Deleted:  %s" % self.SAFE_dir)
 
 if __name__ == '__main__':
 

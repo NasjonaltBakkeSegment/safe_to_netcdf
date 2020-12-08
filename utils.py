@@ -54,3 +54,5 @@ def seconds_from_ref(t):
     return int((mytime - mytime_ref).total_seconds())
 
 
+# Add function to clean work files?
+
