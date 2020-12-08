@@ -348,18 +348,13 @@ class Sentinel1_reader_and_NetCDF_converter:
         print("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
         # Status
-        print('\nCreating NetCDF file')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         out_netcdf = '%s%s.nc' % (nc_outpath, self.product_id)
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
-        # dim_time = ncout.createDimension('time',1)
-        dim_time = ncout.createDimension('time', size=None)
-        dim_x = ncout.createDimension('x', self.xSize)
-        dim_y = ncout.createDimension('y', self.ySize)
+        ncout.createDimension('time', size=None)
+        ncout.createDimension('x', self.xSize)
+        ncout.createDimension('y', self.ySize)
 
         nctime = ncout.createVariable('time', 'i4', ('time',))
         nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True,
@@ -377,11 +372,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add latitude and longitude layers
         ##########################################################
         # Status
-        print('\nCreating latitude longitude')
-        memoryUsage = "Memory usage so far: {} Gb".format(float(resource.getrusage(
-            resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         lat, lon = self.genLatLon_regGrid()  # Assume gcps are on a regular grid
         nclat.long_name = 'latitude'
@@ -397,11 +388,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add raw measurement layers
         ##########################################################
         # Status
-        print('\nAdding raw measurement layers')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         for i in range(1, self.src.RasterCount + 1):
             band = self.src.GetRasterBand(i)
@@ -433,10 +420,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding calibration layers')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         for i, calibration in enumerate(self.xmlCalLUTs.keys()):
             current_polarisation = calibration.split('_')[-1]
@@ -458,10 +442,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding noise layers')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         for polarisation in self.polarisation:
             noiseCorrectionMatrix = self.getNoiseCorrectionMatrix(self.noiseVectors[polarisation],
@@ -482,10 +463,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding subswath layers')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         for polarisation in self.polarisation:
             swathLayer, flags = self.getSwathList(polarisation)
@@ -512,10 +490,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding GCP information')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         gcp_units = {'slantRangeTime': 's', 'latitude': 'degrees', 'longitude': 'degrees',
                      'height': 'm', 'incidenceAngle': 'degrees', 'elevationAngle': 'degrees'}
@@ -552,10 +527,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding annotation information')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         for polarisation in list(self.productMetadata.keys()):
             varBaseName = str('s1Level1ProductSchema_' + polarisation)
@@ -567,10 +539,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding annotation list information')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         productMetadataListComment = {
             'swathMergeList': 'index:{swath:[firstAzimuthLine, firstRangeSample, lastAzimuthLine, '
@@ -604,10 +573,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         print('\nAdding global attributes')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         # nowstr = time.strftime( "%Y-%m-%dT%H:%M:%SZ", [self.t0.year,
         #                self.t0.month,self.t0.day,self.t0.hour,self.t0.minute,
@@ -636,10 +602,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         ncout.close()
         print('\nFinished.')
-        memoryUsage = "Memory usage so far: {} Gb".format(
-            float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000)
-        print(memoryUsage)
-        print(datetime.now() - self.t0)
+        utils.memory_use(self.t0)
 
         if os.path.isfile(out_netcdf):
             return True

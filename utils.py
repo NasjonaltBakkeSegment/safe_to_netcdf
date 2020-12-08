@@ -4,6 +4,8 @@ Tools
 
 import pathlib
 import lxml.etree as ET
+import datetime as dt
+import resource
 
 
 def xml_read(xml_file):
@@ -23,5 +25,20 @@ def xml_read(xml_file):
     root = tree.getroot()
 
     return root
+
+
+def memory_use(start_time):
+    """
+    Print memory usage and time taken by a process
+    Args:
+        start_time: datetime object containing start time of process
+    Returns:
+        N/A
+    """
+    print('\nAdding subswath layers')
+    print(f"Memory usage so far: "
+          f"{float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000} Gb")
+    print(dt.datetime.now() - start_time)
+
 
 
