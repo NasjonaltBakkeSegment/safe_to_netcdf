@@ -19,12 +19,12 @@ import time
 from collections import defaultdict
 from datetime import datetime
 from datetime import timedelta
-from glob import glob
 import gdal
-import lxml.etree as ET
 import netCDF4
 import numpy as np
 from scipy import interpolate
+import pathlib
+import utils
 
 
 class Sentinel1_reader_and_NetCDF_converter:
@@ -41,11 +41,12 @@ class Sentinel1_reader_and_NetCDF_converter:
         SAFE_outpath -- output storage location for unzipped SAFE product
     """
 
-    def __init__(self, SAFE_file, SAFE_outpath):
-        self.SAFE_file = SAFE_file
-        self.SAFE_id = SAFE_file.split('/')[-1].split('.')[0]
-        self.SAFE_outpath = SAFE_outpath
-        self.SAFE_path = None
+    def __init__(self, product, indir, outdir):
+        self.product_id = product
+        self.input_zip = indir / product.with_suffix('.zip')
+        # remplacer le nom par qqch de plus explicite ? genre outdir_tmp ?
+        self.SAFE_outpath = outdir
+        self.SAFE_dir = None
         self.gcps = []  # GCPs from gdal used for generation of lat lon
         self.polarisation = []
         self.xSize = None
@@ -79,34 +80,30 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         # Calibration tables
         calibrationTables = ['sigmaNought', 'betaNought', 'gamma', 'dn']
-        for i, calXmlFile in enumerate(self.xmlFiles['s1Level1CalibrationSchema']):
-            calibrationXmlFile = self.SAFE_path + calXmlFile
+        for calXmlFile in self.xmlFiles['s1Level1CalibrationSchema']:
+            #calibrationXmlFile = self.SAFE_dir / calXmlFile
 
             # Retrieve pixels and lines
-            polarisation, cal_pixels, cal_lines = self.readPixelsLines(calibrationXmlFile)
+            polarisation, cal_pixels, cal_lines = self.readPixelsLines(calXmlFile)
             self.xmlCalPixelLines[polarisation] = [np.array(cal_pixels, np.int16),
                                                    np.array(cal_lines, np.int16)]
 
             # Retrieve Look Up Tables
             for ct in calibrationTables:
-                self.xmlCalLUTs[str(ct + '_' + polarisation)] = np.array(
-                    self.getCalTable(calibrationXmlFile, ct), np.float32)
+                self.xmlCalLUTs[str(ct + '_' + polarisation)] = np.array(self.getCalTable(calXmlFile, ct), np.float32)
 
         # Retrieve thermal noise vectors
-        noiseTables = ['noiseLut']
-        for i, nXmlFile in enumerate(self.xmlFiles['s1Level1NoiseSchema']):
-            noiseXmlFile = self.SAFE_path + nXmlFile
-            noiseVector, polarisation = self.readNoiseData(noiseXmlFile)
+        for nXmlFile in self.xmlFiles['s1Level1NoiseSchema']:
+            noiseVector, polarisation = self.readNoiseData(nXmlFile)
             self.noiseVectors[str(polarisation)] = noiseVector
 
         # Retrieve GCP parameters
         gcp_parameters = ['azimuthTime', 'slantRangeTime', 'line', 'pixel',
                           'latitude', 'longitude', 'height', 'incidenceAngle', 'elevationAngle']
-        for i, xmlFile in enumerate(self.xmlFiles['s1Level1ProductSchema']):
-            productXmlFile = self.SAFE_path + xmlFile
+        for xmlFile in self.xmlFiles['s1Level1ProductSchema']:
 
             for parameter in gcp_parameters:
-                polarisation, values = self.getGCPValues(productXmlFile, parameter)
+                polarisation, values = self.getGCPValues(xmlFile, parameter)
 
                 if not parameter == 'azimuthTime':
                     self.xmlGCPs[str(parameter + '_' + polarisation)] = np.array(values, np.float32)
@@ -151,10 +148,8 @@ class Sentinel1_reader_and_NetCDF_converter:
             'inputDimensionsList', 'dcEstimateList', 'antennaPatternList',
             'coordinateConversionList', 'swathMergeList']
 
-        for i, xmlFile in enumerate(self.xmlFiles['s1Level1ProductSchema']):
-            productXmlFile = self.SAFE_path + xmlFile
-            tree = ET.parse(productXmlFile)
-            root = tree.getroot()
+        for xmlFile in self.xmlFiles['s1Level1ProductSchema']:
+            root = utils.xml_read(xmlFile)
             polarisation = root.find('.//polarisation').text
 
             for pm in productMetadata_parameters:
@@ -279,36 +274,28 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def uncompress(self):
         """ Uncompress SAFE zip file. Return manifest file """
-        SAFE_outpath = self.SAFE_outpath
-        SAFE_file = self.SAFE_file
-        SAFE_id = self.SAFE_id
-        fdirName = '%s%s.SAFE' % (SAFE_outpath, SAFE_id)
-        if os.path.isdir(fdirName) == True:
-            # zipfile already extracted find main xmlfile
-            xmlFile = glob(fdirName + '/manifest.safe')[0]
-        else:
-            cmd = '/usr/bin/unzip %s -d %s' % (SAFE_file, SAFE_outpath)
-            # cmd = '/usr/bin/unzip %s/%s' % (OUTDIR,zipfile)
+        unzipped_dir = self.SAFE_outpath / self.product_id.with_suffix('.SAFE')
+
+        # If zip not extracted yet
+        if not unzipped_dir.is_dir():
+            cmd = f'/usr/bin/unzip {self.input_zip} -d {self.SAFE_outpath}'
             subprocess.call(cmd, shell=True)
-            if os.path.isdir(fdirName) == False:
-                print('Error unzipping file %s' % (SAFE_file))
+            if not unzipped_dir.is_dir():
+                print(f'Error unzipping file {self.input_zip}')
                 sys.exit()
 
-            else:
-                xmlFile = glob(fdirName + '/manifest.safe')[0]
-
-        if os.path.isfile(xmlFile) == False:
-            print('Error unzipping file %s' % (SAFE_file))
+        xmlFile = unzipped_dir / 'manifest.safe'
+        if not xmlFile.is_file():
+            print(f'Manifest file not available {xmlFile}')
             sys.exit()
 
-        self.SAFE_path = fdirName
+        self.SAFE_dir = unzipped_dir
         return xmlFile
 
     def initializer(self, manifest):
         """ Traverse manifest file for setting additional parameters
         in __init__ """
-        tree = ET.parse(manifest)
-        root = tree.getroot()
+        root = utils.xml_read(manifest)
 
         # Set xml-files
         dataObjectSection = root.find('./dataObjectSection')
@@ -323,10 +310,10 @@ class Sentinel1_reader_and_NetCDF_converter:
                 if 'href' in attrib:
                     href = attrib['href'][1:]
             if ftype == 'text/xml' and href:
-                self.xmlFiles[repID].append(href)
+                self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
 
         # Set gdal object
-        self.src = gdal.Open(self.xmlFiles['manifest'])
+        self.src = gdal.Open(str(self.xmlFiles['manifest']))
 
         # Set raster size parameters
         self.xSize = self.src.RasterXSize
@@ -371,7 +358,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         print(memoryUsage)
         print(datetime.now() - self.t0)
 
-        out_netcdf = '%s%s.nc' % (nc_outpath, self.SAFE_id)
+        out_netcdf = '%s%s.nc' % (nc_outpath, self.product_id)
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
         # dim_time = ncout.createDimension('time',1)
         dim_time = ncout.createDimension('time', size=None)
@@ -699,12 +686,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                 values: noiseRangeVectorList, noiseAzimuthVectorList
         """
 
-        if os.path.isfile(xmlfile) == False:
-            print('Error: Can\'t find xmlfile %s' % (xmlfile))
-            return False
-        tree = ET.parse(xmlfile)
-        root = tree.getroot()
-
+        root = utils.xml_read(xmlfile)
         polarisation = root.find('.//polarisation').text
 
         # Noise in range direction
@@ -732,9 +714,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                          'radarFrequency', 'linesPerBurst',
                          'azimuthTimeInterval', 'productFirstLineUtcTime']
         for LAD in self.xmlFiles['s1Level1ProductSchema']:
-            lad_path = self.SAFE_path + LAD
-            lad_tree = ET.parse(lad_path)
-            lad_root = lad_tree.getroot()
+            lad_root = utils.xml_read(LAD)
             lad_polarisation = lad_root.find('.//polarisation').text
             if lad_polarisation == polarisation:
                 for lad_var in LAD_variables:
@@ -793,12 +773,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def readPixelsLines(self, xmlfile):
 
-        if os.path.isfile(xmlfile) == False:
-            print('Error: Can\'t find xmlfile %s' % (xmlfile))
-            return -1
-
-        tree = ET.parse(xmlfile)
-        root = tree.getroot()
+        root = utils.xml_read(xmlfile)
         polarisation = root.find('.//polarisation').text
 
         # Get pixels where we have calibration values. Assume regular distripution over all image
@@ -829,12 +804,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         return (polarisation, pixels, lines)
 
     def getCalTable(self, xmlfile, tName):
-        if os.path.isfile(xmlfile) == False:
-            print('Error: Can\'t find xmlfile %s' % (xmlfile))
-            return -1
-
-        tree = ET.parse(xmlfile)
-        root = tree.getroot()
+        root = utils.xml_read(xmlfile)
 
         # Get calibration values
         cal = []
@@ -861,12 +831,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def getGCPValues(self, xmlfile, parameter):
         """ Method for retrieving Geo Location Point parameter from xml file."""
-        if os.path.isfile(xmlfile) == False:
-            print('Error: Can\'t find xmlfile %s' % (xmlfile))
-            return -1
-
-        tree = ET.parse(xmlfile)
-        root = tree.getroot()
+        root = utils.xml_read(xmlfile)
         polarisation = root.find('.//polarisation').text
 
         #
@@ -1210,22 +1175,25 @@ class Sentinel1_reader_and_NetCDF_converter:
                 print("Deleted:  %s" % self.SAFE_file)
 
         if safe_file:
-            if os.path.exists(os.path.dirname(self.SAFE_path)):
-                shutil.rmtree(self.SAFE_path)
-                print("Deleted:  %s" % self.SAFE_path)
+            if os.path.exists(os.path.dirname(self.SAFE_dir)):
+                shutil.rmtree(self.SAFE_dir)
+                print("Deleted:  %s" % self.SAFE_dir)
 
 
 if __name__ == '__main__':
-    workdir = '/home/elodief/Data/NBS'
-    SAFE_file = os.path.join(workdir, 'zip', 'Sentinel1',
-                             'S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79.zip')
-    #SAFE_file = os.path.join(workdir, 'zip', 'Sentinel1',
-    #
-    #                         'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926.zip')
-    SAFE_outpath = os.path.join(workdir, 'SAFE')
-    conversion_object = Sentinel1_reader_and_NetCDF_converter(SAFE_file=SAFE_file,
-                                                              SAFE_outpath=SAFE_outpath + '/')
 
-    nc_outpath = os.path.join(workdir, 'NetCDF', 'Sentinel1')
+    workdir = pathlib.Path('/home/elodief/Data/NBS')
+
+    products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
+                 'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
+
+    for product in products:
+
+        conversion_object = Sentinel1_reader_and_NetCDF_converter(
+            product=pathlib.Path(product),
+            indir=workdir / 'zip' / 'Sentinel1',
+            outdir=workdir / 'SAFE')
+
+    nc_outpath = workdir / 'NetCDF' / 'Sentinel1'
     cl = 7
-    conversion_object.write_to_NetCDF(nc_outpath + '/', cl)
+    conversion_object.write_to_NetCDF(str(nc_outpath) + '/', cl)
