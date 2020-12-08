@@ -44,9 +44,7 @@ class Sentinel1_reader_and_NetCDF_converter:
     def __init__(self, product, indir, outdir):
         self.product_id = product
         self.input_zip = indir / product.with_suffix('.zip')
-        # remplacer le nom par qqch de plus explicite ? genre outdir_tmp ?
-        self.SAFE_outpath = outdir
-        self.SAFE_dir = None
+        self.SAFE_dir = outdir / self.product_id.with_suffix('.SAFE')
         self.gcps = []  # GCPs from gdal used for generation of lat lon
         self.polarisation = []
         self.xSize = None
@@ -274,22 +272,20 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def uncompress(self):
         """ Uncompress SAFE zip file. Return manifest file """
-        unzipped_dir = self.SAFE_outpath / self.product_id.with_suffix('.SAFE')
 
         # If zip not extracted yet
-        if not unzipped_dir.is_dir():
-            cmd = f'/usr/bin/unzip {self.input_zip} -d {self.SAFE_outpath}'
+        if not self.SAFE_dir.is_dir():
+            cmd = f'/usr/bin/unzip {self.input_zip} -d {self.SAFE_dir.parent}'
             subprocess.call(cmd, shell=True)
-            if not unzipped_dir.is_dir():
+            if not self.SAFE_dir.is_dir():
                 print(f'Error unzipping file {self.input_zip}')
                 sys.exit()
 
-        xmlFile = unzipped_dir / 'manifest.safe'
+        xmlFile = self.SAFE_dir / 'manifest.safe'
         if not xmlFile.is_file():
             print(f'Manifest file not available {xmlFile}')
             sys.exit()
 
-        self.SAFE_dir = unzipped_dir
         return xmlFile
 
     def initializer(self, manifest):
