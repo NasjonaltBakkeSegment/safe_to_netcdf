@@ -49,10 +49,11 @@ def seconds_from_ref(t):
     Returns:
         integer
     """
-    mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f')
+    try:
+        mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f')
+    except ValueError:
+        mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%fZ')
     mytime_ref = dt.datetime(1981, 1, 1)
     return int((mytime - mytime_ref).total_seconds())
 
-
 # Add function to clean work files?
-
