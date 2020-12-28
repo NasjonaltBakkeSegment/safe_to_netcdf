@@ -34,6 +34,7 @@ import osgeo.ogr as ogr
 import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
+import safe_to_netcdf.utils as utils
 
 
 class Sentinel2_reader_and_NetCDF_converter:
@@ -252,8 +253,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # Status
         print('\nCreating NetCDF file')
-        self.memoryUsage()
-        print((datetime.now() - self.t0))
+        utils.memory_use(self.t0)
 
         # Deciding a reference band
         for k, v in self.src.GetSubDatasets():
@@ -309,8 +309,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding projection coordinates')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             xnp, ynp = self.genLatLon(nx, ny, latlon=False)  # Assume gcps are on a regular grid
 
@@ -332,8 +331,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding frequency bands layers')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             if not self.dterrengdata:
                 for k, v in self.src.GetSubDatasets():
@@ -481,8 +479,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding vector layers')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             for layer, path in list(self.vectorInformation.items()):
                 if path:
@@ -519,8 +516,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             if self.processing_level == 'Level-2A':
                 print('\nAdding Level-2A specific layers')
-                self.memoryUsage()
-                print((datetime.now() - self.t0))
+                utils.memory_use(self.t0)
                 l2a_layers = {"MSK_CLDPRB_20m": "MSK_CLDPRB, Cloud Probabilities",
                               "MSK_SNWPRB_20m": "MSK_SNWPRB, Snow Probabilities",
                               'IMG_DATA_Band_AOT_10m_Tile1_Data': "AOT, Aerosol Optical Thickness",
@@ -586,8 +582,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding sun and view angles')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             counter = 1
             for k, v in list(self.sunAndViewAngles.items()):
@@ -617,8 +612,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding XML files as character variables')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             for k, f in list(self.xmlFiles.items()):
                 if f:
@@ -653,8 +647,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding satellite orbit specific data')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             platform_id = {"Sentinel-2A": 0, "Sentinel-2B": 1,
                            "Sentinel-2C": 2, "Sentinel-2D": 3, }
@@ -686,8 +679,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             print('\nAdding global attributes')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
             # nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
             nowstr = datetime.strftime(
@@ -715,8 +707,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             # Status
             print('\nFinished.')
-            self.memoryUsage()
-            print((datetime.now() - self.t0))
+            utils.memory_use(self.t0)
 
         if os.path.isfile(out_netcdf):
             return True
@@ -995,10 +986,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         return latitude, longitude
 
-    def memoryUsage(self):
-        max_memory = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000.
-        print(("Memory usage so far: %f Gb" % max_memory))
-
     def deleteProducts(self, zipped_file=False, safe_file=False):
         """ Method for deletion of extracted temporary .SAFE product """
 
@@ -1048,15 +1035,18 @@ class Sentinel2_reader_and_NetCDF_converter:
 if __name__ == '__main__':
 
     workdir = '/home/elodief/Data/NBS'
-    SAFE_file = os.path.join(workdir, 'zip', 'Sentinel2',
-                             'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA.zip')
+    #SAFE_file = os.path.join(workdir, 'zip', 'Sentinel2',
+    #
+    #                         'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA.zip')
     SAFE_file = os.path.join(workdir, 'zip', 'Sentinel2',
                              'S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239.zip')
-    SAFE_outpath = os.path.join(workdir, 'SAFE')
+    ##SAFE_outpath = os.path.join(workdir, 'SAFE')
+    SAFE_outpath = os.path.join('~/Data/NBS/NBS_reference_data/safetonc_latest', 'S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239')
     conversion_object = Sentinel2_reader_and_NetCDF_converter(SAFE_file=SAFE_file,
                                                               SAFE_outpath=SAFE_outpath + '/')
 
-    nc_outpath = os.path.join(workdir, 'NetCDF', 'Sentinel1')
+    ##nc_outpath = os.path.join(workdir, 'NetCDF', 'Sentinel2')
+    nc_outpath = SAFE_outpath
     cl = 7
     conversion_object.write_to_NetCDF(nc_outpath + '/', cl)
 
