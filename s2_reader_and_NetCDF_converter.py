@@ -118,7 +118,8 @@ class Sentinel2_reader_and_NetCDF_converter:
             Keyword arguments:
             xmlReturn -- string specifying name of xmlFile to return
         """
-        """ Uncompress SAFE zip file. Return manifest file """
+
+        self.SAFE_dir.parent.mkdir(parents=True, exist_ok=True)
 
         # If zip not extracted yet
         if not self.SAFE_dir.is_dir():
@@ -256,7 +257,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             nctime.long_name = 'reference time of satellite image'
             nctime.units = 'seconds since 1981-01-01 00:00:00'
             nctime.calendar = 'gregorian'
-            nctime[:] = self.getReferenceTime()
+            nctime[:] = utils.seconds_from_ref(self.globalAttribs["PRODUCT_START_TIME"])
 
             # Add latitude and longitude layers
             ##########################################################
@@ -904,15 +905,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             return True, layer_mask
         else:
             return False, []
-
-    def getReferenceTime(self):
-        """ Method for retrieving Geo Location Point parameter from xml file."""
-        dt = datetime.strptime(self.globalAttribs["PRODUCT_START_TIME"].split('.')[0],
-                               '%Y-%m-%dT%H:%M:%S')
-        AQ_START = time.mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, 0, 0, 0))
-        dt1981 = time.mktime((1981, 1, 1, 0, 0, 0, 0, 0, 0))
-        delta_t = int(AQ_START - dt1981)
-        return delta_t
 
     def genLatLon(self, nx, ny, latlon=True):
         """ Method providing latitude and longitude arrays or projection
