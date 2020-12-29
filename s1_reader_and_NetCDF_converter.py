@@ -39,8 +39,8 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def __init__(self, product, indir, outdir):
         self.product_id = product
-        self.input_zip = indir / product.with_suffix('.zip')
-        self.SAFE_dir = outdir / self.product_id.with_suffix('.SAFE')
+        self.input_zip = (indir / product).with_suffix('.zip')
+        self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.gcps = []  # GCPs from gdal used for generation of lat lon
         self.polarisation = []
         self.xSize = None
@@ -68,7 +68,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.xmlFiles['manifest'] = self.uncompress()
 
         # 2) Set some of the gloal parameters
-        initializer_ok = self.initializer(self.xmlFiles['manifest'])
+        utils.initializer(self, self.xmlFiles['manifest'])
 
         gcps_ok = self.getGCPs()
 
@@ -346,7 +346,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Status
         utils.memory_use(self.t0)
 
-        out_netcdf = nc_outpath / self.product_id.with_suffix('.nc')
+        out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
         ncout.createDimension('time', size=None)
         ncout.createDimension('x', self.xSize)
@@ -563,13 +563,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         print('\nAdding global attributes')
         utils.memory_use(self.t0)
 
-        # nowstr = time.strftime( "%Y-%m-%dT%H:%M:%SZ", [self.t0.year,
-        #                self.t0.month,self.t0.day,self.t0.hour,self.t0.minute,
-        #                self.t0.second,0,0,0] )
-        #todo
-        nowstr = datetime.strftime(
-            datetime(self.t0.year, self.t0.month, self.t0.day, self.t0.hour, self.t0.minute,
-                     self.t0.second), "%Y-%m-%dT%H:%M:%SZ")
+        nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
         ncout.title = 'Sentinel-1 GRD data'
         ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
         ncout.file_creation_date = nowstr
@@ -1110,9 +1104,9 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_02' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_03' / product
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
-            product=pathlib.Path(product),
+            product=product,
             indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)

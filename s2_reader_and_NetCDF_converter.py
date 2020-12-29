@@ -49,8 +49,8 @@ class Sentinel2_reader_and_NetCDF_converter:
 
     def __init__(self, product, indir, outdir):
         self.product_id = product
-        self.input_zip = indir / product.with_suffix('.zip')
-        self.SAFE_dir = outdir / self.product_id.with_suffix('.SAFE')
+        self.input_zip = (indir / product).with_suffix('.zip')
+        self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.processing_level = None
         self.xmlFiles = defaultdict(list)
         self.imageFiles = defaultdict(list)
@@ -85,10 +85,9 @@ class Sentinel2_reader_and_NetCDF_converter:
             self.xmlFiles['mainXML'] = self.uncompress('MTD*.xml')
 
         # 2) Set some of the global __init__ variables
-        if not self.dterrengdata:
-            initializer_ok = self.initializer(self.xmlFiles['manifest'])
-        else:
-            initializer_ok = self.initializer_dterr(self.xmlFiles['mainXML'])
+        utils.initializer(self, self.xmlFiles['manifest'])
+        #todo: add dterreng case
+        ##    initializer_ok = self.initializer_dterr(self.xmlFiles['mainXML'])
 
         # 3) Read sun and view angles
         print('\nRead view and sun angles')
@@ -239,7 +238,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         # frequency bands
 
         # output filename
-        out_netcdf = nc_outpath / self.product_id.with_suffix('.nc')
+        out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
 
         with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
             ncout.createDimension('time', 0)
@@ -432,29 +431,24 @@ class Sentinel2_reader_and_NetCDF_converter:
                     # Warning 1: Failed to fetch spatial reference on layer MSK_CLOUDS_B00 to
                     # build transformer, assuming matching coordinate systems.
                     if rasterized_ok:
-                        # todo: fusionner les 2 cas
                         if layer == "MSK_CLOUDS_B00":
-                            varout = ncout.createVariable('Clouds', 'i1', ('time', 'y', 'x'),
-                                                          fill_value=-1, zlib=True,
-                                                          chunksizes=chunk_size)
-                            varout.long_name = "Cloud mask 10m resolution"
-                            varout.comment = "Rasterized cloud information."
+                            layer_name = 'Clouds'
+                            comment_name = 'cloud'
                         else:
-                            varout = ncout.createVariable(layer, 'i1', ('time', 'y', 'x'),
+                            layer_name = layer
+                            comment_name = 'vector'
+                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
                                                           fill_value=-1, zlib=True,
                                                           chunksizes=chunk_size)
-                            varout.long_name = "%s mask 10m resolution" % layer
-                            varout.comment = "Rasterized vector information."
-
-                        # varout.coordinates = "lat lon"
+                        varout.long_name = f"{layer_name} mask 10m resolution"
+                        varout.comment = f"Rasterized {comment_name} information."
                         varout.grid_mapping = "UTM_projection"
                         varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
-                        # varout.flag_values = ', '.join([str(i) for i in layer_mask.values()])
-                        # varout.flag_meanings = ' '.join(layer_mask.keys())
                         varout.flag_meanings = ' '.join(
                             [key.replace('-', '_') for key in list(layer_mask.keys())])
                         vector_band = gdal.Open(str(output_file))
                         varout[0, :] = vector_band.GetVirtualMemArray()
+                        #todo: why break?
                         break
 
             # Add Level-2A layers
@@ -623,12 +617,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding global attributes')
             utils.memory_use(self.t0)
 
-            # nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
-            # todo: use ref time
-            nowstr = datetime.strftime(
-                datetime(self.t0.year, self.t0.month, self.t0.day, self.t0.hour, self.t0.minute,
-                         self.t0.second), "%Y-%m-%dT%H:%M:%SZ")
-
+            nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
             ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
             ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
             ncout.file_creation_date = nowstr
@@ -953,9 +942,9 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_02' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_03' / product
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
-            product=pathlib.Path(product),
+            product=product,
             indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)

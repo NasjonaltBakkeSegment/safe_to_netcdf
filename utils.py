@@ -6,6 +6,7 @@ import pathlib
 import lxml.etree as ET
 import datetime as dt
 import resource
+from osgeo import gdal
 
 
 def xml_read(xml_file):
@@ -73,6 +74,74 @@ def create_time(ncfile, t, ref='01/01/1981'):
     nc_time.units = f"seconds since {ref_dt.strftime('%Y-%m-%d %H:%M:%S')}"
     nc_time.calendar = 'gregorian'
     nc_time[:] = seconds_from_ref(t, ref_dt)
+
+    return True
+
+
+def initializer(self, xmlFile):
+    """
+       Traverse manifest file for setting additional variables
+            in __init__
+        Args:
+            xmlFile:
+
+        Returns:
+    """
+    #todo: add s2 dterreng case
+    root = xml_read(xmlFile)
+    sat = self.product_id.split('_')[0][0:2]
+
+    # Set xml-files
+    dataObjectSection = root.find('./dataObjectSection')
+    for dataObject in dataObjectSection.findall('./'):
+        if sat == 'S1':
+            repID = dataObject.attrib['repID']
+        elif sat == 'S2':
+            repID = dataObject.attrib['ID']
+        ftype = None
+        href = None
+        for element in dataObject.iter():
+            attrib = element.attrib
+            if 'mimeType' in attrib:
+                ftype = attrib['mimeType']
+            if 'href' in attrib:
+                href = attrib['href'][1:]
+        if sat == 'S2':
+            if (ftype == 'text/xml' or ftype == 'application/xml') and href:
+                self.xmlFiles[repID] = self.SAFE_dir / href[1:]
+            elif ftype == 'application/octet-stream':
+                self.imageFiles[repID] = self.SAFE_dir / href[1:]
+        elif sat == 'S1':
+            if ftype == 'text/xml' and href:
+                self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
+
+    # Set processing level
+    if sat == 'S2':
+        self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
+        gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
+    elif sat == 'S1':
+        gdalFile = str(self.xmlFiles['manifest'])
+
+    # Set gdal object
+    self.src = gdal.Open(gdalFile)
+    print((self.src))
+
+    # Set global metadata attributes from gdal
+    self.globalAttribs = self.src.GetMetadata()
+
+    if sat == 'S1':
+        # Set raster size parameters
+        self.xSize = self.src.RasterXSize
+        self.ySize = self.src.RasterYSize
+        # Set polarisation parameters
+        polarisations = root.findall('.//s1sarl1:transmitterReceiverPolarisation',
+                                     namespaces=root.nsmap)
+        for polarisation in polarisations:
+            self.polarisation.append(polarisation.text)
+        self.globalAttribs['polarisation'] = self.polarisation
+        # Timeliness
+        self.globalAttribs['ProductTimelinessCategory'] = root.find(
+            './/s1sarl1:productTimelinessCategory', namespaces=root.nsmap).text
 
     return True
 
