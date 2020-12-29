@@ -41,11 +41,12 @@ def memory_use(start_time):
     print(dt.datetime.now() - start_time)
 
 
-def seconds_from_ref(t):
+def seconds_from_ref(t, t_ref):
     """
     Computes the difference in seconds between input date and a reference date (01/01/1981)
     Args:
         t: date as a string
+        t_ref: reference time as a datetime
     Returns:
         integer
     """
@@ -53,7 +54,26 @@ def seconds_from_ref(t):
         mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f')
     except ValueError:
         mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%fZ')
-    mytime_ref = dt.datetime(1981, 1, 1)
-    return int((mytime - mytime_ref).total_seconds())
+    return int((mytime - t_ref).total_seconds())
+
+
+def create_time(ncfile, t, ref='01/01/1981'):
+    """
+    Create time variable for netCDF file.
+    Args:
+        ncfile: netcdf file (already open)
+        t: time as string
+        ref: reference time as string (dd/mm/yyyy)
+    Returns:
+    """
+
+    ref_dt = dt.datetime.strptime(ref, '%d/%m/%Y')
+    nc_time = ncfile.createVariable('time', 'i4', ('time',))
+    nc_time.long_name = 'reference time of satellite image'
+    nc_time.units = f"seconds since {ref_dt.strftime('%Y-%m-%d %H:%M:%S')}"
+    nc_time.calendar = 'gregorian'
+    nc_time[:] = seconds_from_ref(t, ref_dt)
+
+    return True
 
 # Add function to clean work files?

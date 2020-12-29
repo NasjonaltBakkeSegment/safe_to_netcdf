@@ -246,38 +246,8 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
 
-            nctime = ncout.createVariable('time', 'i4', ('time',))
-            # nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,
-            # complevel=compression_level, chunksizes=chunk_size[1:])
-            # nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,
-            # complevel=compression_level, chunksizes=chunk_size[1:])
+            utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
 
-            # Set time value
-            ##########################################################
-            nctime.long_name = 'reference time of satellite image'
-            nctime.units = 'seconds since 1981-01-01 00:00:00'
-            nctime.calendar = 'gregorian'
-            nctime[:] = utils.seconds_from_ref(self.globalAttribs["PRODUCT_START_TIME"])
-
-            # Add latitude and longitude layers
-            ##########################################################
-            # Status
-            """
-            print('\nCreating latitude longitude')
-            self.memoryUsage()
-            print(datetime.now() - self.t0)
-
-            lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
-            nclat.long_name = 'latitude'
-            nclat.units = 'degrees_north'
-            nclat.standard_name = 'latitude'
-            nclat[:,:]=lat
-
-            nclon.long_name = 'longitude'
-            nclon.units = 'degrees_east'
-            nclon.standard_name = 'longitude'
-            nclon[:,:]=lon
-            """
             # Add projection coordinates
             ##########################################################
             # Status
@@ -983,11 +953,9 @@ if __name__ == '__main__':
 
     for product in products:
 
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_02' / product
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=pathlib.Path(product),
-            indir=workdir / 'NBS_reference_data' / 'reference_datain',
-            outdir=workdir / 'NBS_test_data' / 'safe2nc_latest_local_02' / product)
-
-        nc_outpath = workdir / 'NBS_test_data' / 'safe2nc_latest_local_02' / product
-        cl = 7
-        conversion_object.write_to_NetCDF(nc_outpath, cl)
+            indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            outdir=outdir)
+        conversion_object.write_to_NetCDF(outdir, 7)

@@ -352,18 +352,13 @@ class Sentinel1_reader_and_NetCDF_converter:
         ncout.createDimension('x', self.xSize)
         ncout.createDimension('y', self.ySize)
 
-        nctime = ncout.createVariable('time', 'i4', ('time',))
         nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True,
                                      complevel=compression_level, chunksizes=chunk_size[1:])
         nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True,
                                      complevel=compression_level, chunksizes=chunk_size[1:])
 
         # Set time value
-        ##########################################################
-        nctime.long_name = 'reference time of satellite image'
-        nctime.units = 'seconds since 1981-01-01 00:00:00'
-        nctime.calendar = 'gregorian'
-        nctime[:] = utils.seconds_from_ref(self.globalAttribs["ACQUISITION_START_TIME"])
+        utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
 
         # Add latitude and longitude layers
         ##########################################################
@@ -497,7 +492,7 @@ class Sentinel1_reader_and_NetCDF_converter:
             'height': 'Height of the grid point above sea level.',
             'incidenceAngle': 'Incidence angle to grid point.',
             'elevationAngle': 'Elevation angle to grid point.'}
-        dim_gcp = ncout.createDimension('gcp_index', len(self.gcps))
+        ncout.createDimension('gcp_index', len(self.gcps))
         for key, value in self.xmlGCPs.items():
             current_variable = key.split('_')[0]
             if current_variable == 'azimuthTime':
@@ -571,6 +566,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # nowstr = time.strftime( "%Y-%m-%dT%H:%M:%SZ", [self.t0.year,
         #                self.t0.month,self.t0.day,self.t0.hour,self.t0.minute,
         #                self.t0.second,0,0,0] )
+        #todo
         nowstr = datetime.strftime(
             datetime(self.t0.year, self.t0.month, self.t0.day, self.t0.hour, self.t0.minute,
                      self.t0.second), "%Y-%m-%dT%H:%M:%SZ")
@@ -1110,15 +1106,13 @@ if __name__ == '__main__':
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
     products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
-                 'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
+                'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
 
     for product in products:
 
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_02' / product
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=pathlib.Path(product),
-            indir=workdir / 'zip' / 'Sentinel1',
-            outdir=workdir / 'SAFE')
-
-        nc_outpath = workdir / 'NetCDF' / 'Sentinel1'
-        cl = 7
-        conversion_object.write_to_NetCDF(nc_outpath, cl)
+            indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            outdir=outdir)
+        conversion_object.write_to_NetCDF(outdir, 7)
