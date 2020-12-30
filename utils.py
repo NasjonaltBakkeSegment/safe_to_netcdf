@@ -7,7 +7,7 @@ import lxml.etree as ET
 import datetime as dt
 import resource
 from osgeo import gdal
-
+import subprocess as sp
 
 def xml_read(xml_file):
     """ Validate xml syntax from filepath.
@@ -78,7 +78,7 @@ def create_time(ncfile, t, ref='01/01/1981'):
     return True
 
 
-def initializer(self, xmlFile):
+def initializer(self):
     """
        Traverse manifest file for setting additional variables
             in __init__
@@ -88,7 +88,7 @@ def initializer(self, xmlFile):
         Returns:
     """
     #todo: add s2 dterreng case
-    root = xml_read(xmlFile)
+    root = xml_read(self.mainXML)
     sat = self.product_id.split('_')[0][0:2]
 
     # Set xml-files
@@ -120,10 +120,12 @@ def initializer(self, xmlFile):
         self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
         gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
     elif sat == 'S1':
-        gdalFile = str(self.xmlFiles['manifest'])
+        gdalFile = str(self.mainXML)
 
     # Set gdal object
     self.src = gdal.Open(gdalFile)
+    if self.src is None:
+        raise
     print((self.src))
 
     # Set global metadata attributes from gdal
@@ -144,5 +146,27 @@ def initializer(self, xmlFile):
             './/s1sarl1:productTimelinessCategory', namespaces=root.nsmap).text
 
     return True
+
+
+def uncompress(self):
+        """
+        Uncompress SAFE zip file.
+        Find the main XML: manifest or other (dterreng data?)
+        """
+
+        # If zip not extracted yet
+        if not self.SAFE_dir.is_dir():
+            self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
+            sp.run(["/usr/bin/unzip", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
+
+        xmlFile = self.SAFE_dir / 'manifest.safe'
+        # Add dterreng case
+        if not xmlFile.is_file():
+            print(f'Manifest file not available {xmlFile}')
+            raise
+
+        self.mainXML = xmlFile
+
+        return True
 
 # Add function to clean work files?

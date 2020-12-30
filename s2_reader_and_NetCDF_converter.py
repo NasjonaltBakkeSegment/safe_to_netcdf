@@ -76,16 +76,13 @@ class Sentinel2_reader_and_NetCDF_converter:
             directory.
         """
 
-        # 1) Fetch main file
-        self.xmlFiles['manifest'] = self.uncompress('manifest.safe')
-        print((self.xmlFiles['manifest']))
-        if not self.xmlFiles['manifest']:
-            print("\nNo manifest.safe file. Most likely S2 L1C Norwegian DEM product")
-            self.dterrengdata = True
-            self.xmlFiles['mainXML'] = self.uncompress('MTD*.xml')
+        # 1) unzip SAFE archive
+        utils.uncompress(self)
+        # add dterreng case
+        ##self.xmlFiles['mainXML'] = self.uncompress('MTD*.xml')
 
         # 2) Set some of the global __init__ variables
-        utils.initializer(self, self.xmlFiles['manifest'])
+        utils.initializer(self)
         #todo: add dterreng case
         ##    initializer_ok = self.initializer_dterr(self.xmlFiles['mainXML'])
 
@@ -110,31 +107,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # 5) Retrieve SAFE product structure
         ##self.SAFE_structure = self.list_product_structure()
-
-    def uncompress(self, xmlReturn):
-        """ Uncompress SAFE zip file. Return xmlReturn file
-
-            Keyword arguments:
-            xmlReturn -- string specifying name of xmlFile to return
-        """
-
-        self.SAFE_dir.parent.mkdir(parents=True, exist_ok=True)
-
-        # If zip not extracted yet
-        if not self.SAFE_dir.is_dir():
-            cmd = f'/usr/bin/unzip {self.input_zip} -d {self.SAFE_dir.parent}'
-            subprocess.call(cmd, shell=True)
-            if not self.SAFE_dir.is_dir():
-                print(f'Error unzipping file {self.input_zip}')
-                sys.exit()
-
-        # todo: will not work for dterreng data as it's a regular expression
-        xmlFile = self.SAFE_dir / xmlReturn
-        if not xmlFile.is_file():
-            print(f'Main file not available {xmlFile}')
-            return False
-
-        return xmlFile
 
     def initializer(self, mainXML):
         """ Traverse manifest file for setting additional variables
@@ -590,8 +562,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                            "Sentinel-2C": 2, "Sentinel-2D": 3, }
             # orb_dir_id = {"DESCENDING":0, "":1,
 
-            if self.xmlFiles['manifest']:
-                root = utils.xml_read(self.xmlFiles['manifest'])
+            # what for? if there is no manifest (dterreng case) -> error as root not assigned
+            #if self.xmlFiles['manifest']:
+            if self.mainXML:
+                #root = utils.xml_read(self.xmlFiles['manifest'])
+                root = utils.xml_read(self.mainXML)
                 self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
                                                               namespaces=root.nsmap).text
 

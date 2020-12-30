@@ -10,7 +10,6 @@
 #
 # Need to use gdal 2.1.1-> to have support of the SAFE reader
 
-import subprocess
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -65,10 +64,10 @@ class Sentinel1_reader_and_NetCDF_converter:
         """
 
         # 1) Fetch manifest.xml file
-        self.xmlFiles['manifest'] = self.uncompress()
+        utils.uncompress(self)
 
         # 2) Set some of the gloal parameters
-        utils.initializer(self, self.xmlFiles['manifest'])
+        utils.initializer(self)
 
         gcps_ok = self.getGCPs()
 
@@ -265,24 +264,6 @@ class Sentinel1_reader_and_NetCDF_converter:
             self.productMetadataList[polarisation][listType] = swathBoundsList
         else:
             print("Extraction of %s is not implemented" % listType)
-
-    def uncompress(self):
-        """ Uncompress SAFE zip file. Return manifest file """
-
-        # If zip not extracted yet
-        if not self.SAFE_dir.is_dir():
-            cmd = f'/usr/bin/unzip {self.input_zip} -d {self.SAFE_dir.parent}'
-            subprocess.call(cmd, shell=True)
-            if not self.SAFE_dir.is_dir():
-                print(f'Error unzipping file {self.input_zip}')
-                sys.exit()
-
-        xmlFile = self.SAFE_dir / 'manifest.safe'
-        if not xmlFile.is_file():
-            print(f'Manifest file not available {xmlFile}')
-            sys.exit()
-
-        return xmlFile
 
     def initializer(self, manifest):
         """ Traverse manifest file for setting additional parameters
