@@ -18,8 +18,6 @@
 
 import pathlib
 import math
-import subprocess
-import time
 from collections import defaultdict
 from datetime import datetime
 import sys
@@ -32,6 +30,7 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 import safe_to_netcdf.utils as utils
+import os
 
 
 class Sentinel2_reader_and_NetCDF_converter:
@@ -106,7 +105,9 @@ class Sentinel2_reader_and_NetCDF_converter:
                     self.vectorInformation[vectorID] = vectorPath
 
         # 5) Retrieve SAFE product structure
-        ##self.SAFE_structure = self.list_product_structure()
+        # much difficulty afterwards to be able to save this to netCDF
+        ##self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
+        self.SAFE_structure = self.list_product_structure()
 
     def initializer(self, mainXML):
         """ Traverse manifest file for setting additional variables
@@ -875,39 +876,37 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         return latitude, longitude
 
-# todo
-##    def list_product_structure(self, startpath=None):
-##        """ Traverse SAFE file structure (or any file structure) and
-##            creates a xml file containing the file structure.
-##
-##            Returns a string representation of the xml file."""
-##
-##        if not startpath:
-##            startpath = self.SAFE_path
-##
-##        root_path = startpath.split('/')[-1]
-##        ET_root = ET.Element(root_path)
-##        # Create dictionary that contains all elements
-##        elements = {root_path: ET_root}
-##
-##        # Iterate throgh the file structure
-##        for root, dirs, files in os.walk(startpath):
-##            level = root.replace(startpath, '').count(os.sep)
-##            current_xpath = str('/' + root_path + root.replace(startpath, ''))
-##            current_path = root.replace(startpath, '')
-##
-##            # Create all folder elements
-##            if dirs:
-##                for dir in dirs:
-##                    element = ET.SubElement(elements[current_xpath.strip('/')], dir)
-##                    elements[str(current_xpath.strip('/') + '/' + dir)] = element
-##            # Add all files in the correct folder
-##            for f in files:
-##                sub_element = ET.SubElement(elements[current_xpath.strip('/')], 'file')
-##                sub_element.text = f
-##
-##        return ET.tostring(ET_root)
-##
+    def list_product_structure(self):
+        """ Traverse SAFE file structure (or any file structure) and
+            creates a xml file containing the file structure.
+
+            Returns a string representation of the xml file."""
+
+        startpath = str(self.SAFE_dir)
+
+        root_path = startpath.split('/')[-1]
+        ET_root = ET.Element(root_path)
+        # Create dictionary that contains all elements
+        elements = {root_path: ET_root}
+
+        # Iterate throgh the file structure
+        for root, dirs, files in os.walk(startpath):
+            level = root.replace(startpath, '').count(os.sep)
+            current_xpath = str('/' + root_path + root.replace(startpath, ''))
+            current_path = root.replace(startpath, '')
+
+            # Create all folder elements
+            if dirs:
+                for dir in dirs:
+                    element = ET.SubElement(elements[current_xpath.strip('/')], dir)
+                    elements[str(current_xpath.strip('/') + '/' + dir)] = element
+            # Add all files in the correct folder
+            for f in files:
+                sub_element = ET.SubElement(elements[current_xpath.strip('/')], 'file')
+                sub_element.text = f
+
+        return ET.tostring(ET_root)
+
 
 if __name__ == '__main__':
 
