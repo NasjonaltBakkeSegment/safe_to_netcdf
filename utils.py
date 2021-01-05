@@ -8,29 +8,28 @@ import datetime as dt
 import resource
 from osgeo import gdal
 import subprocess as sp
+import zipfile
+
 
 def xml_read(xml_file):
-    """ Validate xml syntax from filepath.
-
+    """
+    Read XML file.
     Args:
-        xml_file ([pathlib object]): [filepath to an xml file]
+        xml_file [pathlib]): filepath to an xml file
     Returns:
-        [bool]: [return True if a valid xml filepath is provided, 
-        raises an exception if the xmlfile is invalid, empty, or doesn't exist ]
+        lxml.etree._Element or None if file missing
     """
     if not pathlib.Path(xml_file).is_file():
         print(f'Error: Can\'t find xmlfile {xml_file}')
         return None
-
     tree = ET.parse(str(xml_file))
     root = tree.getroot()
-
     return root
 
 
 def memory_use(start_time):
     """
-    Print memory usage and time taken by a process
+    Print memory usage and time taken by a process.
     Args:
         start_time: datetime object containing start time of process
     Returns:
@@ -44,7 +43,7 @@ def memory_use(start_time):
 
 def seconds_from_ref(t, t_ref):
     """
-    Computes the difference in seconds between input date and a reference date (01/01/1981)
+    Computes the difference in seconds between input date and a reference date.
     Args:
         t: date as a string
         t_ref: reference time as a datetime
@@ -65,7 +64,7 @@ def create_time(ncfile, t, ref='01/01/1981'):
         ncfile: netcdf file (already open)
         t: time as string
         ref: reference time as string (dd/mm/yyyy)
-    Returns:
+    Returns: True
     """
 
     ref_dt = dt.datetime.strptime(ref, '%d/%m/%Y')
@@ -74,55 +73,62 @@ def create_time(ncfile, t, ref='01/01/1981'):
     nc_time.units = f"seconds since {ref_dt.strftime('%Y-%m-%d %H:%M:%S')}"
     nc_time.calendar = 'gregorian'
     nc_time[:] = seconds_from_ref(t, ref_dt)
-
     return True
 
 
 def initializer(self):
     """
-       Traverse manifest file for setting additional variables
-            in __init__
-        Args:
-            xmlFile:
-
-        Returns:
+    Use the main XML file to initialize extra variables:
+     - list of XML-GML files
+     - list of images
+     - global attributes from gdal info
+     - ...
+    Returns: True
     """
-    #todo: add s2 dterreng case
     root = xml_read(self.mainXML)
     sat = self.product_id.split('_')[0][0:2]
 
-    # Set xml-files
-    dataObjectSection = root.find('./dataObjectSection')
-    for dataObject in dataObjectSection.findall('./'):
-        if sat == 'S1':
-            repID = dataObject.attrib['repID']
-        elif sat == 'S2':
-            repID = dataObject.attrib['ID']
-        ftype = None
-        href = None
-        for element in dataObject.iter():
-            attrib = element.attrib
-            if 'mimeType' in attrib:
-                ftype = attrib['mimeType']
-            if 'href' in attrib:
-                href = attrib['href'][1:]
-        if sat == 'S2':
-            if (ftype == 'text/xml' or ftype == 'application/xml') and href:
-                self.xmlFiles[repID] = self.SAFE_dir / href[1:]
-            elif ftype == 'application/octet-stream':
-                self.imageFiles[repID] = self.SAFE_dir / href[1:]
-        elif sat == 'S1':
-            if ftype == 'text/xml' and href:
-                self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
-
-    # Set processing level
-    if sat == 'S2':
-        self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
-        gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
-    elif sat == 'S1':
-        gdalFile = str(self.mainXML)
+    # List of xml / gml files
+    if sat == 'S2' and self.dterrengdata:
+        # For DTERR data, add manually the list of images / xml-gml files from parsing the SAFE
+        # directory
+        allFiles = zipfile.ZipFile(self.input_zip).namelist()
+        for f in allFiles:
+            fWithPath = self.SAFE_dir.parent / f
+            if fWithPath.suffix == '.xml' or fWithPath.suffix == '.gml':
+                self.xmlFiles[fWithPath.stem] = fWithPath
+            elif fWithPath.suffix == '.jp2':
+                # Read relative image path (since gdal can't open all these products..)
+                self.image_list_dterreng.append(fWithPath)
+    else:
+        dataObjectSection = root.find('./dataObjectSection')
+        for dataObject in dataObjectSection.findall('./'):
+            if sat == 'S1':
+                repID = dataObject.attrib['repID']
+            elif sat == 'S2':
+                repID = dataObject.attrib['ID']
+            ftype = None
+            href = None
+            for element in dataObject.iter():
+                attrib = element.attrib
+                if 'mimeType' in attrib:
+                    ftype = attrib['mimeType']
+                if 'href' in attrib:
+                    href = attrib['href'][1:]
+            if sat == 'S2':
+                if (ftype == 'text/xml' or ftype == 'application/xml') and href:
+                    self.xmlFiles[repID] = self.SAFE_dir / href[1:]
+                elif ftype == 'application/octet-stream':
+                    self.imageFiles[repID] = self.SAFE_dir / href[1:]
+            elif sat == 'S1':
+                if ftype == 'text/xml' and href:
+                    self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
 
     # Set gdal object
+    if sat == 'S2' and not self.dterrengdata:
+        gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
+    else:
+        gdalFile = str(self.mainXML)
     self.src = gdal.Open(gdalFile)
     if self.src is None:
         raise
@@ -149,24 +155,28 @@ def initializer(self):
 
 
 def uncompress(self):
-        """
-        Uncompress SAFE zip file.
-        Find the main XML: manifest or other (dterreng data?)
-        """
+    """
+    Uncompress a SAFE zip file.
+    Find the main XML: manifest or other (dterreng data).
+    Return: True
+    """
 
-        # If zip not extracted yet
-        if not self.SAFE_dir.is_dir():
-            self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
-            sp.run(["/usr/bin/unzip", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
+    # If zip not extracted yet
+    if not self.SAFE_dir.is_dir():
+        self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
+        sp.run(["/usr/bin/unzip", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
 
-        xmlFile = self.SAFE_dir / 'manifest.safe'
-        # Add dterreng case
+    # Try and find the main XML file
+    xmlFile = self.SAFE_dir / 'manifest.safe'
+    if not xmlFile.is_file():
+        xmlFile = self.SAFE_dir / 'MTD_MSIL1C.xml'
         if not xmlFile.is_file():
-            print(f'Manifest file not available {xmlFile}')
+            print(f'Main file not found. Exiting')
             raise
+        self.dterrengdata = True
 
-        self.mainXML = xmlFile
-
-        return True
+    print(f'Main file: {xmlFile}')
+    self.mainXML = xmlFile
+    return True
 
 # Add function to clean work files?

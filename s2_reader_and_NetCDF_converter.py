@@ -50,7 +50,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
-        self.processing_level = None
+        self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
         self.xmlFiles = defaultdict(list)
         self.imageFiles = defaultdict(list)
         self.globalAttribs = {}
@@ -77,28 +77,20 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # 1) unzip SAFE archive
         utils.uncompress(self)
-        # add dterreng case
-        ##self.xmlFiles['mainXML'] = self.uncompress('MTD*.xml')
 
         # 2) Set some of the global __init__ variables
         utils.initializer(self)
-        #todo: add dterreng case
-        ##    initializer_ok = self.initializer_dterr(self.xmlFiles['mainXML'])
 
         # 3) Read sun and view angles
         print('\nRead view and sun angles')
         if not self.dterrengdata:
-            self.readSunAndViewAngles(self.xmlFiles['S2_{}_Tile1_Metadata'.format(
-                self.processing_level)])
-
-            # self.readSunAndViewAngles(self.SAFE_path + self.xmlFiles[
-            # 'S2_Level-2A_Tile1_Metadata'])
+            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
         else:
-            self.readSunAndViewAngles(self.xmlFiles['MTD_TL'])
+            currXml = self.xmlFiles['MTD_TL']
+        self.readSunAndViewAngles(currXml)
 
         # 4) Read vector information
         print('\nRead vector information')
-
         for gmlfile in self.xmlFiles.values():
             if gmlfile and gmlfile.suffix == '.gml':
                     vectorID, vectorPath = self.readVectorInformation(gmlfile)
@@ -109,81 +101,6 @@ class Sentinel2_reader_and_NetCDF_converter:
         ##self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
         self.SAFE_structure = self.list_product_structure()
 
-    def initializer(self, mainXML):
-        """ Traverse manifest file for setting additional variables
-            in __init__ """
-
-        root = utils.xml_read(mainXML)
-
-        # Set xml-files
-        dataObjectSection = root.find('./dataObjectSection')
-        for dataObject in dataObjectSection.findall('./'):
-            repID = dataObject.attrib['ID']
-            ftype = None
-            href = None
-            for element in dataObject.iter():
-                attrib = element.attrib
-                if 'mimeType' in attrib:
-                    ftype = attrib['mimeType']
-                if 'href' in attrib:
-                    href = attrib['href'][1:]
-            if (ftype == 'text/xml' or ftype == 'application/xml') and href:
-                self.xmlFiles[repID] = self.SAFE_dir / href[1:]
-            elif ftype == 'application/octet-stream':
-                self.imageFiles[repID] = self.SAFE_dir / href[1:]
-
-        # Set processing level
-        for k in list(self.xmlFiles.keys()):
-            if "Level-1C" in k:
-                self.processing_level = "Level-1C"
-                break
-            elif "Level-2A" in k:
-                self.processing_level = "Level-2A"
-                break
-
-        if not self.processing_level:
-            print("Unknown processing level. Hence terminating.")
-            sys.exit(1)
-
-        # Set gdal object
-        # str(self.xmlFiles['manifest'])
-        self.src = gdal.Open(
-            str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)]))
-        print((self.src))
-
-        # Set global metadata attributes from gdal
-        self.globalAttribs = self.src.GetMetadata()
-
-        return True
-
-##    def initializer_dterr(self, mainXML):
-##        """Set additional variables in __init__ for dterrengdata products"""
-##        SAFE_outpath = self.SAFE_outpath
-##        SAFE_file = self.SAFE_file
-##        SAFE_id = self.SAFE_id
-##        fdirName = '%s%s.SAFE' % (SAFE_outpath, SAFE_id)
-##
-##        # Adding xml files
-##        for dirName, subdirList, fileList in os.walk(fdirName):
-##            for fname in fileList:
-##                if fname.endswith('.xml') or fname.endswith('.gml'):
-##                    fID = fname.split('.')[0]
-##                    self.xmlFiles[fID] = '/'.join((dirName, fname))
-##
-##        # Set gdal object
-##        self.src = gdal.Open(self.xmlFiles['MTD_MSIL1C'])
-##
-##        # Read relative image path (since gdal can't open all these products..)
-##        tree = ET.parse(self.xmlFiles['MTD_MSIL1C'])
-##        root = tree.getroot()
-##
-##        for element in root.findall('.//IMAGE_FILE'):
-##            img = self.SAFE_path + '/' + element.text
-##            self.image_list_dterreng.append(img)
-##
-##        # Set global metadata attributes from gdal
-##        self.globalAttribs = self.src.GetMetadata()
-##
     def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 32, 32)):
         """ Method writing output NetCDF product.
 
@@ -288,7 +205,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                             else:
                                 band_measurement = current_band.GetVirtualMemArray()
                             print((band_measurement.shape))
-
+                            # todo: why? to me looks like we leave the variable empty in nc file?
                             # varout[0,:,:] = band_measurement
 
                     else:  # 8 bit true color image ("u1")
@@ -315,6 +232,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                                'B05': 'B5', 'B06': 'B6', 'B07': 'B7', 'B08': 'B8',
                                'B8A': 'B8A', 'B09': 'B9', 'B10': 'B10',
                                'B11': 'B11', 'B12': 'B12'}
+                # Only the jpeg2000 files
                 for raster_path in self.image_list_dterreng:
                     subdataset = gdal.Open(raster_path)
                     subdataset_geotransform = subdataset.GetGeoTransform()
@@ -913,10 +831,12 @@ if __name__ == '__main__':
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
+    #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_03' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_04' / product
+        outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
             indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
