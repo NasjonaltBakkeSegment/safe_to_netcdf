@@ -139,27 +139,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
 
-            # Add latitude and longitude layers
-            # elf: temporary to compare more easily outputs with production
-            ##########################################################
-            # Status
-
-            print('\nCreating latitude longitude')
-            print(datetime.now() - self.t0)
-            nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-
-            lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
-            nclat.long_name = 'latitude'
-            nclat.units = 'degrees_north'
-            nclat.standard_name = 'latitude'
-            nclat[:,:]=lat
-
-            nclon.long_name = 'longitude'
-            nclon.units = 'degrees_east'
-            nclon.standard_name = 'longitude'
-            nclon[:,:]=lon
-
             # Add projection coordinates
             ##########################################################
             # Status
@@ -234,16 +213,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                     else:  # 8 bit true color image ("u1")
                         # create new rgb dimension
                         ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                        #varout = ncout.createVariable('TCI', 'u1',
-                        #                              ('time', 'dimension_rgb', 'y', 'x'),
-                        #                              fill_value=0, zlib=True,
-                        #                              complevel=compression_level,
-                        #                              chunksizes=(1,) + chunk_size)
                         varout = ncout.createVariable('TCI', 'u1',
-                                                      ('dimension_rgb', 'y', 'x'),
+                                                      ('time', 'dimension_rgb', 'y', 'x'),
                                                       fill_value=0, zlib=True,
-                                                      complevel=compression_level)
-
+                                                      complevel=compression_level,
+                                                      chunksizes=(1,) + chunk_size)
                         varout.units = "1"
                         # varout.coordinates = "lat lon" ;
                         varout.grid_mapping = "UTM_projection"
@@ -253,8 +227,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                             current_band = subdataset.GetRasterBand(i)
                             band_metadata = current_band.GetMetadata()
                             band_measurement = current_band.GetVirtualMemArray()
-                            #varout[0, i - 1, :, :] = band_measurement
-                            varout[i - 1, :, :] = band_measurement
+                            varout[0, i - 1, :, :] = band_measurement
             else:
                 bands_alias = {'B01': 'B1', 'B02': 'B2', 'B03': 'B3', 'B04': 'B4',
                                'B05': 'B5', 'B06': 'B6', 'B07': 'B7', 'B08': 'B8',
@@ -294,15 +267,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                     else:  # 8 bit true color image ("u1")
                         # create new rgb dimension
                         ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                        #varout = ncout.createVariable('TCI', 'u1',
-                        #                              ('time', 'dimension_rgb', 'y', 'x'),
-                        #                              fill_value=0, zlib=True,
-                        #                              complevel=compression_level,
-                        #                              chunksizes=(1,) + chunk_size)
                         varout = ncout.createVariable('TCI', 'u1',
-                                                      ('dimension_rgb', 'y', 'x'),
+                                                      ('time', 'dimension_rgb', 'y', 'x'),
                                                       fill_value=0, zlib=True,
-                                                      complevel=compression_level)
+                                                      complevel=compression_level,
+                                                      chunksizes=(1,) + chunk_size)
                         varout.units = "1"
                         # varout.coordinates = "lat lon" ;
                         varout.grid_mapping = "UTM_projection"
@@ -312,8 +281,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                             current_band = subdataset.GetRasterBand(i)
                             band_metadata = current_band.GetMetadata()
                             band_measurement = current_band.GetVirtualMemArray()
-                            #varout[0, i - 1, :, :] = band_measurement
-                            varout[i - 1, :, :] = band_measurement
+                            varout[0, i - 1, :, :] = band_measurement
 
             # set grid mapping
             ##########################################################
@@ -856,9 +824,12 @@ if __name__ == '__main__':
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
     #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_06' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_07' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
