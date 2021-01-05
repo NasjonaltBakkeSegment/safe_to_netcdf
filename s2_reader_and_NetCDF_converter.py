@@ -118,6 +118,8 @@ class Sentinel2_reader_and_NetCDF_converter:
         utils.memory_use(self.t0)
 
         # Deciding a reference band
+        #todo dterreng warning coming from here?
+        # yes -> self.src.GetSubDatasets() ok but the gdal.Open does not work
         for k, v in self.src.GetSubDatasets():
             if v.find('10m') > 0:
                 self.reference_band = gdal.Open(k)
@@ -136,6 +138,27 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.createDimension('y', ny)
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
+
+            # Add latitude and longitude layers
+            # elf: temporary to compare more easily outputs with production
+            ##########################################################
+            # Status
+
+            print('\nCreating latitude longitude')
+            print(datetime.now() - self.t0)
+            nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+            nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+
+            lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
+            nclat.long_name = 'latitude'
+            nclat.units = 'degrees_north'
+            nclat.standard_name = 'latitude'
+            nclat[:,:]=lat
+
+            nclon.long_name = 'longitude'
+            nclon.units = 'degrees_east'
+            nclon.standard_name = 'longitude'
+            nclon[:,:]=lon
 
             # Add projection coordinates
             ##########################################################
@@ -206,16 +229,20 @@ class Sentinel2_reader_and_NetCDF_converter:
                                 band_measurement = current_band.GetVirtualMemArray()
                             print((band_measurement.shape))
                             # todo: why? to me looks like we leave the variable empty in nc file?
-                            # varout[0,:,:] = band_measurement
+                            varout[0, :, :] = band_measurement
 
                     else:  # 8 bit true color image ("u1")
                         # create new rgb dimension
                         ncout.createDimension('dimension_rgb', subdataset.RasterCount)
+                        #varout = ncout.createVariable('TCI', 'u1',
+                        #                              ('time', 'dimension_rgb', 'y', 'x'),
+                        #                              fill_value=0, zlib=True,
+                        #                              complevel=compression_level,
+                        #                              chunksizes=(1,) + chunk_size)
                         varout = ncout.createVariable('TCI', 'u1',
-                                                      ('time', 'dimension_rgb', 'y', 'x'),
+                                                      ('dimension_rgb', 'y', 'x'),
                                                       fill_value=0, zlib=True,
-                                                      complevel=compression_level,
-                                                      chunksizes=(1,) + chunk_size)
+                                                      complevel=compression_level)
 
                         varout.units = "1"
                         # varout.coordinates = "lat lon" ;
@@ -226,22 +253,23 @@ class Sentinel2_reader_and_NetCDF_converter:
                             current_band = subdataset.GetRasterBand(i)
                             band_metadata = current_band.GetMetadata()
                             band_measurement = current_band.GetVirtualMemArray()
-                            varout[0, i - 1, :, :] = band_measurement
+                            #varout[0, i - 1, :, :] = band_measurement
+                            varout[i - 1, :, :] = band_measurement
             else:
                 bands_alias = {'B01': 'B1', 'B02': 'B2', 'B03': 'B3', 'B04': 'B4',
                                'B05': 'B5', 'B06': 'B6', 'B07': 'B7', 'B08': 'B8',
                                'B8A': 'B8A', 'B09': 'B9', 'B10': 'B10',
                                'B11': 'B11', 'B12': 'B12'}
                 # Only the jpeg2000 files
-                for raster_path in self.image_list_dterreng:
+                for raster in self.image_list_dterreng:
+                    raster_path = str(raster)
                     subdataset = gdal.Open(raster_path)
                     subdataset_geotransform = subdataset.GetGeoTransform()
                     if not "TCI" in raster_path:
+                        # only one band per image, so loop not useful
                         for i in range(1, subdataset.RasterCount + 1):
                             current_band = subdataset.GetRasterBand(i)
-                            band_metadata = current_band.GetMetadata()
-
-                            varName = bands_alias[raster_path.split('.')[-2][-3::]]
+                            varName = bands_alias[raster.stem[-3::]]
                             varout = ncout.createVariable(varName, np.int16,
                                                           ('time', 'y', 'x'), fill_value=0,
                                                           zlib=True, complevel=compression_level,
@@ -250,16 +278,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                             # varout.coordinates = "lat lon" ;
                             varout.grid_mapping = "UTM_projection"
                             varout.standard_name = 'toa_bidirectional_reflectance'
-                            varout.long_name = 'Reflectance in band %s' % bands_alias[
-                                raster_path.split('.')[-2][-3::]]
-                            # varout.bandwidth = band_metadata['BANDWIDTH']
-                            # varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
-                            # varout.wavelength = band_metadata['WAVELENGTH']
-                            # varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
-                            # varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
-                            # varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
+                            varout.long_name = 'Reflectance in band %s' % varName
                             varout._Unsigned = "true"
-                            # varout.scale_factor = 0.0001 # 1/(quanitification value) converts
                             # from DN to reflectance
                             if subdataset_geotransform[1] != 10:
                                 current_size = current_band.XSize
@@ -268,17 +288,21 @@ class Sentinel2_reader_and_NetCDF_converter:
                                     order=0)
                             else:
                                 band_measurement = current_band.GetVirtualMemArray()
-                            varout[:] = band_measurement
+                            # elf
+                            varout[0,:,:] = band_measurement
 
                     else:  # 8 bit true color image ("u1")
                         # create new rgb dimension
                         ncout.createDimension('dimension_rgb', subdataset.RasterCount)
+                        #varout = ncout.createVariable('TCI', 'u1',
+                        #                              ('time', 'dimension_rgb', 'y', 'x'),
+                        #                              fill_value=0, zlib=True,
+                        #                              complevel=compression_level,
+                        #                              chunksizes=(1,) + chunk_size)
                         varout = ncout.createVariable('TCI', 'u1',
-                                                      ('time', 'dimension_rgb', 'y', 'x'),
+                                                      ('dimension_rgb', 'y', 'x'),
                                                       fill_value=0, zlib=True,
-                                                      complevel=compression_level,
-                                                      chunksizes=(1,) + chunk_size)
-
+                                                      complevel=compression_level)
                         varout.units = "1"
                         # varout.coordinates = "lat lon" ;
                         varout.grid_mapping = "UTM_projection"
@@ -288,6 +312,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                             current_band = subdataset.GetRasterBand(i)
                             band_metadata = current_band.GetMetadata()
                             band_measurement = current_band.GetVirtualMemArray()
+                            #varout[0, i - 1, :, :] = band_measurement
                             varout[i - 1, :, :] = band_measurement
 
             # set grid mapping
@@ -314,33 +339,34 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding vector layers')
             utils.memory_use(self.t0)
 
-            for layer, path in self.vectorInformation.items():
-                if path:
-                    output_file = (self.SAFE_dir / 'tmp' / layer).with_suffix('.tiff')
-                    rasterized_ok, layer_mask = self.rasterizeVectorLayers(nx, ny, path,
-                                                                           output_file)
-                    # Warning 1: Failed to fetch spatial reference on layer MSK_CLOUDS_B00 to
-                    # build transformer, assuming matching coordinate systems.
-                    if rasterized_ok:
-                        if layer == "MSK_CLOUDS_B00":
-                            layer_name = 'Clouds'
-                            comment_name = 'cloud'
-                        else:
-                            layer_name = layer
-                            comment_name = 'vector'
-                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
-                                                          fill_value=-1, zlib=True,
-                                                          chunksizes=chunk_size)
-                        varout.long_name = f"{layer_name} mask 10m resolution"
-                        varout.comment = f"Rasterized {comment_name} information."
-                        varout.grid_mapping = "UTM_projection"
-                        varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
-                        varout.flag_meanings = ' '.join(
-                            [key.replace('-', '_') for key in list(layer_mask.keys())])
-                        vector_band = gdal.Open(str(output_file))
-                        varout[0, :] = vector_band.GetVirtualMemArray()
-                        #todo: why break?
-                        break
+            ## elf - temporary
+            ##for layer, path in self.vectorInformation.items():
+            ##    if path:
+            ##        output_file = (self.SAFE_dir / 'tmp' / layer).with_suffix('.tiff')
+            ##        rasterized_ok, layer_mask = self.rasterizeVectorLayers(nx, ny, path,
+            ##                                                               output_file)
+            ##        # Warning 1: Failed to fetch spatial reference on layer MSK_CLOUDS_B00 to
+            ##        # build transformer, assuming matching coordinate systems.
+            ##        if rasterized_ok:
+            ##            if layer == "MSK_CLOUDS_B00":
+            ##                layer_name = 'Clouds'
+            ##                comment_name = 'cloud'
+            ##            else:
+            ##                layer_name = layer
+            ##                comment_name = 'vector'
+            ##            varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
+            ##                                              fill_value=-1, zlib=True,
+            ##                                              chunksizes=chunk_size)
+            ##            varout.long_name = f"{layer_name} mask 10m resolution"
+            ##            varout.comment = f"Rasterized {comment_name} information."
+            ##            varout.grid_mapping = "UTM_projection"
+            ##            varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
+            ##            varout.flag_meanings = ' '.join(
+            ##                [key.replace('-', '_') for key in list(layer_mask.keys())])
+            ##            vector_band = gdal.Open(str(output_file))
+            ##            varout[0, :] = vector_band.GetVirtualMemArray()
+            ##            #todo: why break?
+            ##            break
 
             # Add Level-2A layers
             ##########################################################
@@ -479,20 +505,17 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             platform_id = {"Sentinel-2A": 0, "Sentinel-2B": 1,
                            "Sentinel-2C": 2, "Sentinel-2D": 3, }
-            # orb_dir_id = {"DESCENDING":0, "":1,
-
-            # what for? if there is no manifest (dterreng case) -> error as root not assigned
-            #if self.xmlFiles['manifest']:
-            if self.mainXML:
-                #root = utils.xml_read(self.xmlFiles['manifest'])
-                root = utils.xml_read(self.mainXML)
+            root = utils.xml_read(self.mainXML)
+            if not self.dterrengdata:
                 self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
                                                               namespaces=root.nsmap).text
+            else:
+                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
 
             ncout.createDimension('orbit_dim', 3)
             nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
             rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
-            orb_nb = root.find('.//safe:orbitNumber', namespaces=root.nsmap).text
+            orb_nb = self.globalAttribs['orbitNumber']
             orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
             platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
 
@@ -835,7 +858,7 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_04' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_06' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
