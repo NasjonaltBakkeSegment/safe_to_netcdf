@@ -97,9 +97,9 @@ def initializer(self):
             fWithPath = self.SAFE_dir.parent / f
             if fWithPath.suffix == '.xml' or fWithPath.suffix == '.gml':
                 self.xmlFiles[fWithPath.stem] = fWithPath
-            elif fWithPath.suffix == '.jp2':
-                # Read relative image path (since gdal can't open all these products..)
-                self.image_list_dterreng.append(fWithPath)
+        # Read relative image path (since gdal can't open all these products..)
+        self.image_list_dterreng = [self.SAFE_dir.parent / s for s in allFiles
+                                                    if ".jp2" in s and "IMG_DATA" in s]
     else:
         dataObjectSection = root.find('./dataObjectSection')
         for dataObject in dataObjectSection.findall('./'):
