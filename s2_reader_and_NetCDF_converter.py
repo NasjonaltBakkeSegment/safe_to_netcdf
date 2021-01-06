@@ -265,33 +265,31 @@ class Sentinel2_reader_and_NetCDF_converter:
             utils.memory_use(self.t0)
 
             ## elf - temporary
-            ##for layer, path in self.vectorInformation.items():
-            ##    if path:
-            ##        output_file = (self.SAFE_dir / 'tmp' / layer).with_suffix('.tiff')
-            ##        rasterized_ok, layer_mask = self.rasterizeVectorLayers(nx, ny, path,
-            ##                                                               output_file)
-            ##        # Warning 1: Failed to fetch spatial reference on layer MSK_CLOUDS_B00 to
-            ##        # build transformer, assuming matching coordinate systems.
-            ##        if rasterized_ok:
-            ##            if layer == "MSK_CLOUDS_B00":
-            ##                layer_name = 'Clouds'
-            ##                comment_name = 'cloud'
-            ##            else:
-            ##                layer_name = layer
-            ##                comment_name = 'vector'
-            ##            varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
-            ##                                              fill_value=-1, zlib=True,
-            ##                                              chunksizes=chunk_size)
-            ##            varout.long_name = f"{layer_name} mask 10m resolution"
-            ##            varout.comment = f"Rasterized {comment_name} information."
-            ##            varout.grid_mapping = "UTM_projection"
-            ##            varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
-            ##            varout.flag_meanings = ' '.join(
-            ##                [key.replace('-', '_') for key in list(layer_mask.keys())])
-            ##            vector_band = gdal.Open(str(output_file))
-            ##            varout[0, :] = vector_band.GetVirtualMemArray()
-            ##            #todo: why break?
-            ##            break
+            for layer, path in self.vectorInformation.items():
+                if path:
+                    output_file = (self.SAFE_dir / 'tmp' / layer).with_suffix('.tiff')
+                    rasterized_ok, layer_mask = self.rasterizeVectorLayers(nx, ny, path,
+                                                                           output_file)
+                    # todo Warning 1: Failed to fetch spatial reference on layer MSK_CLOUDS_B00 to
+                    # build transformer, assuming matching coordinate systems.
+                    if rasterized_ok:
+                        if layer == "MSK_CLOUDS_B00":
+                            layer_name = 'Clouds'
+                            comment_name = 'cloud'
+                        else:
+                            layer_name = layer
+                            comment_name = 'vector'
+                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
+                                                          fill_value=-1, zlib=True,
+                                                          chunksizes=chunk_size)
+                        varout.long_name = f"{layer_name} mask 10m resolution"
+                        varout.comment = f"Rasterized {comment_name} information."
+                        varout.grid_mapping = "UTM_projection"
+                        varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
+                        varout.flag_meanings = ' '.join(
+                            [key.replace('-', '_') for key in list(layer_mask.keys())])
+                        vector_band = gdal.Open(str(output_file))
+                        varout[0, :] = vector_band.GetVirtualMemArray()
 
             # Add Level-2A layers
             ##########################################################
@@ -779,14 +777,15 @@ if __name__ == '__main__':
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
 
     #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
     #            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_08' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_10' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
