@@ -120,6 +120,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         # Deciding a reference band
         #todo dterreng warning coming from here?
         # yes -> self.src.GetSubDatasets() ok but the gdal.Open does not work
+        # add break? how to remove warning from dterr?
         for k, v in self.src.GetSubDatasets():
             if v.find('10m') > 0:
                 self.reference_band = gdal.Open(k)
@@ -167,121 +168,77 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding frequency bands layers')
             utils.memory_use(self.t0)
 
-            if not self.dterrengdata:
-                for k, v in self.src.GetSubDatasets():
-                    subdataset = gdal.Open(k)
-                    subdataset_geotransform = subdataset.GetGeoTransform()
-                    if not "True color image" in v:
-                        for i in range(1, subdataset.RasterCount + 1):
-                            current_band = subdataset.GetRasterBand(i)
-                            band_metadata = current_band.GetMetadata()
+            if self.dterrengdata:
+                # For DTERR data, gdal fails to properly do the src.GetSubDatasets()
+                # so manually read the list of images created beforehand
+                images = [[str(i), i.stem] for i in self.image_list_dterreng]
+            else:
+                images = self.src.GetSubDatasets()
+            # todo: move elsewhere
+            bands_alias = {'B01': 'B1', 'B02': 'B2', 'B03': 'B3', 'B04': 'B4',
+                           'B05': 'B5', 'B06': 'B6', 'B07': 'B7', 'B08': 'B8',
+                           'B8A': 'B8A', 'B09': 'B9', 'B10': 'B10',
+                           'B11': 'B11', 'B12': 'B12'}
 
+            for k, v in images:
+                subdataset = gdal.Open(k)
+                subdataset_geotransform = subdataset.GetGeoTransform()
+                # True color image (8 bit true color image)
+                if ("True color image" in v) or ('TCI' in v):
+                    ncout.createDimension('dimension_rgb', subdataset.RasterCount)
+                    varout = ncout.createVariable('TCI', 'u1',
+                                                  ('time', 'dimension_rgb', 'y', 'x'),
+                                                  fill_value=0, zlib=True,
+                                                  complevel=compression_level,
+                                                  chunksizes=(1,) + chunk_size)
+                    varout.units = "1"
+                    varout.grid_mapping = "UTM_projection"
+                    varout.long_name = 'TCI RGB from B4, B3 and B2'
+                    varout._Unsigned = "true"
+                    for i in range(1, subdataset.RasterCount + 1):
+                        current_band = subdataset.GetRasterBand(i)
+                        band_measurement = current_band.GetVirtualMemArray()
+                        varout[0, i - 1, :, :] = band_measurement
+                # Reflectance data for each band
+                else:
+                    for i in range(1, subdataset.RasterCount + 1):
+                        current_band = subdataset.GetRasterBand(i)
+                        if self.dterrengdata:
+                            band_metadata = None
+                            varName = bands_alias[v[-3::]]
+                        else:
+                            band_metadata = current_band.GetMetadata()
                             varName = band_metadata['BANDNAME']
-                            varout = ncout.createVariable(varName, np.uint16,
-                                                          ('time', 'y', 'x'), fill_value=0,
-                                                          zlib=True, complevel=compression_level,
-                                                          chunksizes=chunk_size)
-                            varout.units = "1"
-                            # varout.coordinates = "lat lon" ;
-                            varout.grid_mapping = "UTM_projection"
-                            if not self.processing_level == 'Level-2A':
-                                varout.standard_name = 'toa_bidirectional_reflectance'
-                            else:
-                                varout.standard_name = 'surface_bidirectional_reflectance'
-                            varout.long_name = 'Reflectance in band %s' % band_metadata['BANDNAME']
+                        varout = ncout.createVariable(varName, np.uint16,
+                                                      ('time', 'y', 'x'), fill_value=0,
+                                                      zlib=True, complevel=compression_level,
+                                                      chunksizes=chunk_size)
+                        varout.units = "1"
+                        varout.grid_mapping = "UTM_projection"
+                        varout._Unsigned = "true"
+                        varout.long_name = 'Reflectance in band %s' % varName
+                        if self.processing_level == 'Level-2A':
+                            varout.standard_name = 'surface_bidirectional_reflectance'
+                        else:
+                            varout.standard_name = 'toa_bidirectional_reflectance'
+                        if band_metadata:
                             varout.bandwidth = band_metadata['BANDWIDTH']
                             varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
                             varout.wavelength = band_metadata['WAVELENGTH']
                             varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
                             varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
                             varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                            varout._Unsigned = "true"
-                            # varout.scale_factor = 0.0001 # 1/(quanitification value) converts
-                            # from DN to reflectance
-                            print((varName, subdataset_geotransform))
-                            if subdataset_geotransform[1] != 10:
-                                current_size = current_band.XSize
-                                band_measurement = scipy.ndimage.zoom(
-                                    input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
-                                    order=0)
-                            else:
-                                band_measurement = current_band.GetVirtualMemArray()
-                            print((band_measurement.shape))
-                            # todo: why? to me looks like we leave the variable empty in nc file?
-                            varout[0, :, :] = band_measurement
-
-                    else:  # 8 bit true color image ("u1")
-                        # create new rgb dimension
-                        ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                        varout = ncout.createVariable('TCI', 'u1',
-                                                      ('time', 'dimension_rgb', 'y', 'x'),
-                                                      fill_value=0, zlib=True,
-                                                      complevel=compression_level,
-                                                      chunksizes=(1,) + chunk_size)
-                        varout.units = "1"
-                        # varout.coordinates = "lat lon" ;
-                        varout.grid_mapping = "UTM_projection"
-                        varout.long_name = 'TCI RGB from B4, B3 and B2'
-                        varout._Unsigned = "true"
-                        for i in range(1, subdataset.RasterCount + 1):
-                            current_band = subdataset.GetRasterBand(i)
-                            band_metadata = current_band.GetMetadata()
+                        # from DN to reflectance
+                        print((varName, subdataset_geotransform))
+                        if subdataset_geotransform[1] != 10:
+                            current_size = current_band.XSize
+                            band_measurement = scipy.ndimage.zoom(
+                                input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
+                                order=0)
+                        else:
                             band_measurement = current_band.GetVirtualMemArray()
-                            varout[0, i - 1, :, :] = band_measurement
-            else:
-                bands_alias = {'B01': 'B1', 'B02': 'B2', 'B03': 'B3', 'B04': 'B4',
-                               'B05': 'B5', 'B06': 'B6', 'B07': 'B7', 'B08': 'B8',
-                               'B8A': 'B8A', 'B09': 'B9', 'B10': 'B10',
-                               'B11': 'B11', 'B12': 'B12'}
-                # Only the jpeg2000 files
-                for raster in self.image_list_dterreng:
-                    raster_path = str(raster)
-                    subdataset = gdal.Open(raster_path)
-                    subdataset_geotransform = subdataset.GetGeoTransform()
-                    if not "TCI" in raster_path:
-                        # only one band per image, so loop not useful
-                        for i in range(1, subdataset.RasterCount + 1):
-                            current_band = subdataset.GetRasterBand(i)
-                            varName = bands_alias[raster.stem[-3::]]
-                            varout = ncout.createVariable(varName, np.int16,
-                                                          ('time', 'y', 'x'), fill_value=0,
-                                                          zlib=True, complevel=compression_level,
-                                                          chunksizes=chunk_size)
-                            varout.units = "1"
-                            # varout.coordinates = "lat lon" ;
-                            varout.grid_mapping = "UTM_projection"
-                            varout.standard_name = 'toa_bidirectional_reflectance'
-                            varout.long_name = 'Reflectance in band %s' % varName
-                            varout._Unsigned = "true"
-                            # from DN to reflectance
-                            if subdataset_geotransform[1] != 10:
-                                current_size = current_band.XSize
-                                band_measurement = scipy.ndimage.zoom(
-                                    input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
-                                    order=0)
-                            else:
-                                band_measurement = current_band.GetVirtualMemArray()
-                            # elf
-                            varout[0,:,:] = band_measurement
-
-                    else:  # 8 bit true color image ("u1")
-                        # create new rgb dimension
-                        ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                        varout = ncout.createVariable('TCI', 'u1',
-                                                      ('time', 'dimension_rgb', 'y', 'x'),
-                                                      fill_value=0, zlib=True,
-                                                      complevel=compression_level,
-                                                      chunksizes=(1,) + chunk_size)
-                        varout.units = "1"
-                        # varout.coordinates = "lat lon" ;
-                        varout.grid_mapping = "UTM_projection"
-                        varout.long_name = 'TCI RGB from B4, B3 and B2'
-                        varout._Unsigned = "true"
-                        for i in range(1, subdataset.RasterCount + 1):
-                            current_band = subdataset.GetRasterBand(i)
-                            band_metadata = current_band.GetMetadata()
-                            band_measurement = current_band.GetVirtualMemArray()
-                            varout[0, i - 1, :, :] = band_measurement
+                        print(band_measurement.shape)
+                        varout[0, :, :] = band_measurement
 
             # set grid mapping
             ##########################################################
@@ -822,14 +779,14 @@ if __name__ == '__main__':
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+    #            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_07' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_08' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
