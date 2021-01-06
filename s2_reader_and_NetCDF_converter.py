@@ -20,7 +20,6 @@ import pathlib
 import math
 from collections import defaultdict
 from datetime import datetime
-import sys
 import gdal
 import lxml.etree as ET
 import netCDF4
@@ -30,6 +29,7 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 import safe_to_netcdf.utils as utils
+import safe_to_netcdf.constants as cst
 import os
 
 
@@ -61,10 +61,6 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C
         self.sunAndViewAngles = defaultdict(list)
         self.vectorInformation = defaultdict(list)
-        self.bands_alias_bandID = {0: 'B1', 1: 'B2', 2: 'B3', 3: 'B4', 4: 'B5',
-                                   5: 'B6', 6: 'B7', 7: 'B8', 8: 'B8A', 9: 'B9', 10: 'B10',
-                                   11: 'B11',
-                                   12: 'B12'}
         self.SAFE_structure = None
         self.image_list_dterreng = []
 
@@ -174,12 +170,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                 images = [[str(i), i.stem] for i in self.image_list_dterreng]
             else:
                 images = self.src.GetSubDatasets()
-            # todo: move elsewhere
-            bands_alias = {'B01': 'B1', 'B02': 'B2', 'B03': 'B3', 'B04': 'B4',
-                           'B05': 'B5', 'B06': 'B6', 'B07': 'B7', 'B08': 'B8',
-                           'B8A': 'B8A', 'B09': 'B9', 'B10': 'B10',
-                           'B11': 'B11', 'B12': 'B12'}
-
             for k, v in images:
                 subdataset = gdal.Open(k)
                 subdataset_geotransform = subdataset.GetGeoTransform()
@@ -205,7 +195,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                         current_band = subdataset.GetRasterBand(i)
                         if self.dterrengdata:
                             band_metadata = None
-                            varName = bands_alias[v[-3::]]
+                            varName = cst.s2_bands_aliases[v[-3::]]
                         else:
                             band_metadata = current_band.GetMetadata()
                             varName = band_metadata['BANDNAME']
@@ -264,7 +254,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding vector layers')
             utils.memory_use(self.t0)
 
-            ## elf - temporary
             for layer, path in self.vectorInformation.items():
                 if path:
                     output_file = (self.SAFE_dir / 'tmp' / layer).with_suffix('.tiff')
@@ -297,32 +286,15 @@ class Sentinel2_reader_and_NetCDF_converter:
             if self.processing_level == 'Level-2A':
                 print('\nAdding Level-2A specific layers')
                 utils.memory_use(self.t0)
-                l2a_layers = {"MSK_CLDPRB_20m": "MSK_CLDPRB, Cloud Probabilities",
-                              "MSK_SNWPRB_20m": "MSK_SNWPRB, Snow Probabilities",
-                              'IMG_DATA_Band_AOT_10m_Tile1_Data': "AOT, Aerosol Optical Thickness",
-                              'IMG_DATA_Band_WVP_10m_Tile1_Data': "WVP, Water Vapour",
-                              'IMG_DATA_Band_SCL_20m_Tile1_Data': "SCL, Scene Classification"}
-                scene_classifcation_flags = {'NODATA': 0, 'SATURATED_DEFECTIVE': 1,
-                                             'DARK_FEATURE_SHADOW': 2,
-                                             'CLOUD_SHADOW': 3,
-                                             'VEGETATION': 4,
-                                             'NOT_VEGETATED': 5,
-                                             'WATER': 6,
-                                             'UNCLASSIFIED': 7,
-                                             'CLOUD_MEDIUM_PROBA': 8,
-                                             'CLOUD_HIGH_PROBA': 9,
-                                             'THIN_CIRRUS': 10,
-                                             'SNOW_ICE': 11}
                 gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
-
                 l2a_kv = {}
-                for layer in list(l2a_layers.keys()):
+                for layer in list(cst.s2_l2a_layers.keys()):
                     for k, v in list(self.imageFiles.items()):
                         if layer in k:
-                            l2a_kv[k] = l2a_layers[k]
+                            l2a_kv[k] = cst.s2_l2a_layers[k]
                         elif layer in v:
                             print((layer, v, k))
-                            l2a_kv[k] = l2a_layers[layer]
+                            l2a_kv[k] = cst.s2_l2a_layers[layer]
 
                 for k, v in list(l2a_kv.items()):
                     print((k, v))
@@ -346,10 +318,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = longName
                     if varName == "SCL":
-                        varout.flag_values = np.array(list(scene_classifcation_flags.values()),
+                        varout.flag_values = np.array(list(
+                            cst.s2_scene_classification_flags.values()),
                                                       dtype=np.int8)
                         varout.flag_meanings = ' '.join(
-                            [key for key in list(scene_classifcation_flags.keys())])
+                            [key for key in list(cst.s2_scene_classification_flags.keys())])
 
                     if GeoT[1] != 10:
                         raster_data = scipy.ndimage.zoom(input=SourceDS.GetVirtualMemArray(),
@@ -426,8 +399,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding satellite orbit specific data')
             utils.memory_use(self.t0)
 
-            platform_id = {"Sentinel-2A": 0, "Sentinel-2B": 1,
-                           "Sentinel-2C": 2, "Sentinel-2D": 3, }
             root = utils.xml_read(self.mainXML)
             if not self.dterrengdata:
                 self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
@@ -449,7 +420,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
                                  "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
 
-            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), platform_id[platform]]
+            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
 
             # Add global attributes
             ##########################################################
@@ -548,7 +519,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # View angles
         counter_angle = 0
-        for BANDID in np.array(list(self.bands_alias_bandID.keys())):
+        for BANDID in np.array(list(cst.s2_bands_order.keys())):
             tmp_view_zenith = np.zeros((angle_len, angle_len), dtype=np.float32)
             tmp_view_azimuth = np.zeros((angle_len, angle_len), dtype=np.float32)
             tmp_view_zenith[:] = np.nan
@@ -574,9 +545,9 @@ class Sentinel2_reader_and_NetCDF_converter:
                                 counter_entry += 1
                     counter_angle += 1
                 self.sunAndViewAngles[
-                    str('view_zenith_' + self.bands_alias_bandID[BANDID])] = tmp_view_zenith
+                    str('view_zenith_' + cst.s2_bands_order[BANDID])] = tmp_view_zenith
                 self.sunAndViewAngles[
-                    str('view_azimuth_' + self.bands_alias_bandID[BANDID])] = tmp_view_azimuth
+                    str('view_azimuth_' + cst.s2_bands_order[BANDID])] = tmp_view_azimuth
 
     def resample_angles(self, angles, new_dim, angles_length, angles_height, step, type=np.float32):
         ''' Resample angles to get 1-1 with original output.
@@ -780,8 +751,8 @@ if __name__ == '__main__':
     #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
     #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
 
-    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-    #            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
