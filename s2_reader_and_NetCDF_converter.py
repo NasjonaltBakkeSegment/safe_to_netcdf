@@ -85,13 +85,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             currXml = self.xmlFiles['MTD_TL']
         self.readSunAndViewAngles(currXml)
 
-        # 4) Read vector information
-        print('\nRead vector information')
-        for gmlfile in self.xmlFiles.values():
-            if gmlfile and gmlfile.suffix == '.gml':
-                    vectorID, vectorPath = self.readVectorInformation(gmlfile)
-                    self.vectorInformation[vectorID] = vectorPath
-
         # 5) Retrieve SAFE product structure
         # much difficulty afterwards to be able to save this to netCDF
         ##self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
@@ -154,6 +147,20 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncy.standard_name = 'projection_y_coordinate'
             ncy[:] = ynp
 
+            ### tmp - lat lon
+            ##nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+            ##nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+            ##lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
+            ##nclat.long_name = 'latitude'
+            ##nclat.units = 'degrees_north'
+            ##nclat.standard_name = 'latitude'
+            ##nclat[:,:]=lat
+
+            ##nclon.long_name = 'longitude'
+            ##nclon.units = 'degrees_east'
+            ##nclon.standard_name = 'longitude'
+            ##nclon[:,:]=lon
+
             # Add raw measurement layers
             # Currently adding TCI
             # NODATA = 0 (ie. fillvalue) from
@@ -184,6 +191,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                     varout.units = "1"
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = 'TCI RGB from B4, B3 and B2'
+                    ##varout.coordinates = "lat lon" ;
                     varout._Unsigned = "true"
                     for i in range(1, subdataset.RasterCount + 1):
                         current_band = subdataset.GetRasterBand(i)
@@ -206,6 +214,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                         varout.units = "1"
                         varout.grid_mapping = "UTM_projection"
                         varout._Unsigned = "true"
+                        ##varout.coordinates = "lat lon" ;
                         varout.long_name = 'Reflectance in band %s' % varName
                         if self.processing_level == 'Level-2A':
                             varout.standard_name = 'surface_bidirectional_reflectance'
@@ -227,7 +236,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                                 order=0)
                         else:
                             band_measurement = current_band.GetVirtualMemArray()
-                        print(band_measurement.shape)
+                        #print(band_measurement.shape)
                         varout[0, :, :] = band_measurement
 
             # set grid mapping
@@ -254,12 +263,10 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding vector layers')
             utils.memory_use(self.t0)
 
-            for layer, path in self.vectorInformation.items():
-                if path:
-                    output_file = (self.SAFE_dir / 'tmp' / layer).with_suffix('.tiff')
-                    rasterized_ok, layer_mask = self.rasterizeVectorLayers(nx, ny, path,
-                                                                           output_file)
-                    # todo Warning 1: Failed to fetch spatial reference on layer MSK_CLOUDS_B00 to
+            for gmlfile in self.xmlFiles.values():
+                if gmlfile and gmlfile.suffix == '.gml':
+                    layer = gmlfile.stem
+                    rasterized_ok, layer_mask, mask = self.rasterizeVectorLayers(nx, ny, gmlfile)
                     # build transformer, assuming matching coordinate systems.
                     if rasterized_ok:
                         if layer == "MSK_CLOUDS_B00":
@@ -274,11 +281,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                         varout.long_name = f"{layer_name} mask 10m resolution"
                         varout.comment = f"Rasterized {comment_name} information."
                         varout.grid_mapping = "UTM_projection"
+                        ##varout.coordinates = "lat lon" ;
                         varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
                         varout.flag_meanings = ' '.join(
                             [key.replace('-', '_') for key in list(layer_mask.keys())])
-                        vector_band = gdal.Open(str(output_file))
-                        varout[0, :] = vector_band.GetVirtualMemArray()
+                        varout[0, :] = mask
 
             # Add Level-2A layers
             ##########################################################
@@ -354,7 +361,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 else:
                     varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
 
-                #varout.coordinates = 'lat lon'
+                ##varout.coordinates = 'lat lon'
                 varout.grid_mapping = "UTM_projection"
                 varout.comment = '1 to 1 with original 22x22 resolution'
                 varout[0, :, :] = resampled_angles
@@ -568,130 +575,46 @@ class Sentinel2_reader_and_NetCDF_converter:
                     angles_resampled[i * step:new_dim, j * step:new_dim] = angles[i, j]
         return angles_resampled
 
-    def readVectorInformation(self, gmlfile):
-        """ Reading vector information from Sentinel-2 .gml files.
-        """
-
-        gmlID = gmlfile.stem
-
-        if not gmlfile.is_file():
-            print(('Error: Can\'t find gmlfile %s' % (gmlfile)))
-            return gmlID, False
-
-        # Create directories for output
-        output_dir = self.SAFE_dir / 'tmp'
-        # if python < 3.5
-        ##if not output_dir.is_dir():
-        ##    output_dir.mkdir()
-        output_dir.mkdir(exist_ok=True)
-
-        destName = (output_dir / gmlID).with_suffix('.shp')
-
-        vto = gdal.VectorTranslateOptions(format='ESRI Shapefile')
-        vt = gdal.VectorTranslate(destNameOrDestDS=str(destName), srcDS=str(gmlfile), options=vto)
-        vt.FlushCache()
-        vt = None
-
-        if destName.is_file():
-            return gmlID, destName
-        else:
-            return gmlID, False
-
-    def rasterizeVectorLayers(self, nx, ny, shapefile,
-                              output_file):  # ,output_dir=str(self.SAFE_path + '/tmp/'),
-        # maskType=None):
-        """ Supports all vector layers. Rasterized by means of gdal tools."""
-        ulx, xres, xskew, uly, yskew, yres = self.reference_band.GetGeoTransform()  # ulx - upper
-        # left x, uly - upper left y
-
-        """ For the future....?
-        if shapefile:
-            if maskType:
-                ro =  gdal.RasterizeOptions(xRes=xres, yRes=yres,
-                    outputBounds=[ulx, uly+(yres*ny),ulx+(xres*nx), uly], width=nx,
-                    height=ny,format="GTiff", where="maskType = 'OPAQUE'", burnValues=1,
-                    layers=[layer_name], noData=0)
-            else:
-                ro =  gdal.RasterizeOptions(xRes=xres, yRes=yres,
-                    outputBounds=[ulx, uly+(yres*ny),ulx+(xres*nx), uly], width=nx,
-                    height=ny,format="GTiff", burnValues=1,
-                    layers=[layer_name], noData=0)
-            tmp = gdal.Rasterize(destNameOrDestDS=str(output_dir + layer_name + '.tif'),
-            srcDS=shapefile, options=ro)
-            tmp.FlushCache()
-            tmp=None
-        vector_fn = src
-        nx = ny = 10980
-        # Define pixel_size and NoData value of new raster
-        pixel_size = 10
-        NoData_value = 255
-        """
+    def rasterizeVectorLayers(self, nx, ny, shapefile):
 
         # Open the data source and read in the extent
         NoData_value = 0
+
         source_ds = ogr.Open(str(shapefile))
         source_layer = source_ds.GetLayer()
-        source_srs = source_layer.GetSpatialRef()
-        x_min, x_max, y_min, y_max = source_layer.GetExtent()
-        target_ds = gdal.GetDriverByName('GTiff').Create(str(output_file), nx, ny, 1, gdal.GDT_Byte)
-        # target_ds.SetGeoTransform((x_min, xres, 0, y_max, 0, yres))
-        target_ds.SetGeoTransform(self.reference_band.GetGeoTransform())
-        target_ds.SetProjection(self.reference_band.GetProjection())
-        band = target_ds.GetRasterBand(1)
-        band.SetNoDataValue(NoData_value)
+        # Check that gml file contains features
+        if source_layer is None:
+            return False, None, None
 
-        # Find features:
-        gml_id = []
-        maskType = []
-        for i in range(0, source_layer.GetFeatureCount()):
-            f = source_layer.GetFeature(i)
-            gml_id.append(f.GetField('gml_id'))
-            maskType.append(f.GetField('maskType'))
-
-        unique_gml_id = list(set(gml_id))
-        unique_maskType = list(set(maskType))
+        geotransform = self.reference_band.GetGeoTransform()
+        dst_ds = gdal.GetDriverByName('MEM').Create('', nx, ny, 1, gdal.GDT_Byte)
+        dst_rb = dst_ds.GetRasterBand(1)
+        dst_rb.SetNoDataValue(NoData_value)
+        dst_ds.SetGeoTransform(geotransform)
 
         flag_values = []
         flag_meanings = []
-        if ('CIRRUS' or 'OPAQUE') in unique_maskType:
-            tmplist = unique_maskType
-            tmpname = 'maskType'
-            cloud = True
-        else:
-            tmplist = unique_gml_id
-            tmpname = 'gml_id'
-            cloud = False
-        for i, filt in enumerate(tmplist):  # 1 - OPAQUE, 2 - CIRRUS
-            source_layer.SetAttributeFilter("%s = \'%s\'" % (tmpname, filt))
-            # shift all values by 1 because 0 is already the nodata value
-            # so we don't want to have actual meaningful values = 0
-            # -> only works because we know there are no -1 values possible
-            if cloud:
-                value = i + 1
+        for i in range(0, source_layer.GetFeatureCount()):
+            feat = source_layer.GetFeature(i)
+            name = feat.GetField('gml_id')
+            source_layer.SetAttributeFilter("gml_id = \'%s\'" % name)
+            if 'OPAQUE' in name:
+                value = int(name.split('.')[-1]) + 1
             else:
-                try:
-                    if 'OPAQUE' in filt:
-                        value = int(filt.split('.')[-1]) + 1
-                    else:
-                        value = int(filt[-1]) + 1
-                except:
-                    print(f'pb with value for {filt}')
-                    value = i
-            gdal.RasterizeLayer(target_ds, [1], source_layer, burn_values=[value])
+                value = int(name[-1]) + 1
+            gdal.RasterizeLayer(dst_ds, [1], source_layer, burn_values=[value])
             flag_values.append(value)
-            flag_meanings.append(filt)
+            flag_meanings.append(name)
 
-        target_ds.FlushCache()
-        target_ds = None
+        dst_ds.FlushCache()
+        mask_arr = dst_ds.GetRasterBand(1).ReadAsArray()
+        dst_ds = None
 
         # order flags for easier comparison
         sorted_pairs = sorted(zip(flag_meanings, flag_values))
         layer_mask = dict(sorted_pairs)
 
-        if output_file.is_file():
-            return True, layer_mask
-        else:
-            return False, []
+        return True, layer_mask, mask_arr
 
     def genLatLon(self, nx, ny, latlon=True):
         """ Method providing latitude and longitude arrays or projection
@@ -764,16 +687,16 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
+    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
     #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
     #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
 
-    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-    #            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_18' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_20' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
