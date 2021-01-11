@@ -354,7 +354,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 else:
                     varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
 
-                varout.coordinates = 'lat lon'
+                #varout.coordinates = 'lat lon'
                 varout.grid_mapping = "UTM_projection"
                 varout.comment = '1 to 1 with original 22x22 resolution'
                 varout[0, :, :] = resampled_angles
@@ -651,26 +651,43 @@ class Sentinel2_reader_and_NetCDF_converter:
         unique_gml_id = list(set(gml_id))
         unique_maskType = list(set(maskType))
 
-        layer_mask = {}
+        flag_values = []
+        flag_meanings = []
         if ('CIRRUS' or 'OPAQUE') in unique_maskType:
-            for i, filt in enumerate(unique_maskType):  # 1 - OPAQUE, 2 - CIRRUS
-                source_layer.SetAttributeFilter("maskType = \'%s\'" % filt)
-
-                # Rasterize
-                gdal.RasterizeLayer(target_ds, [1], source_layer, burn_values=[i + 1])
-                layer_mask[filt] = i + 1
-            target_ds.FlushCache()
-            target_ds = None
+            tmplist = unique_maskType
+            tmpname = 'maskType'
+            cloud = True
         else:
-            for i, filt in enumerate(unique_gml_id):
-                source_layer.SetAttributeFilter("gml_id = \'%s\'" % filt)
+            tmplist = unique_gml_id
+            tmpname = 'gml_id'
+            cloud = False
+        for i, filt in enumerate(tmplist):  # 1 - OPAQUE, 2 - CIRRUS
+            source_layer.SetAttributeFilter("%s = \'%s\'" % (tmpname, filt))
+            # shift all values by 1 because 0 is already the nodata value
+            # so we don't want to have actual meaningful values = 0
+            # -> only works because we know there are no -1 values possible
+            if cloud:
+                value = i + 1
+            else:
+                try:
+                    if 'OPAQUE' in filt:
+                        value = int(filt.split('.')[-1]) + 1
+                    else:
+                        value = int(filt[-1]) + 1
+                except:
+                    print(f'pb with value for {filt}')
+                    value = i
+            gdal.RasterizeLayer(target_ds, [1], source_layer, burn_values=[value])
+            flag_values.append(value)
+            flag_meanings.append(filt)
 
-                # Rasterize
-                gdal.RasterizeLayer(target_ds, [1], source_layer, burn_values=[i + 1])
-                layer_mask[filt] = i + 1
+        target_ds.FlushCache()
+        target_ds = None
 
-            target_ds.FlushCache()
-            target_ds = None
+        # order flags for easier comparison
+        sorted_pairs = sorted(zip(flag_meanings, flag_values))
+        layer_mask = dict(sorted_pairs)
+
         if output_file.is_file():
             return True, layer_mask
         else:
@@ -751,12 +768,12 @@ if __name__ == '__main__':
     #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
     #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+    #            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_10' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_18' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
