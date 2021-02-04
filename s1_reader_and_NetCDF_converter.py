@@ -14,7 +14,6 @@ import sys
 from collections import defaultdict
 from datetime import datetime
 from datetime import timedelta
-import gdal
 import netCDF4
 import numpy as np
 from scipy import interpolate
@@ -265,47 +264,6 @@ class Sentinel1_reader_and_NetCDF_converter:
         else:
             print("Extraction of %s is not implemented" % listType)
 
-    def initializer(self, manifest):
-        """ Traverse manifest file for setting additional parameters
-        in __init__ """
-        root = utils.xml_read(manifest)
-
-        # Set xml-files
-        dataObjectSection = root.find('./dataObjectSection')
-        for dataObject in dataObjectSection.findall('./'):
-            repID = dataObject.attrib['repID']
-            ftype = None
-            href = None
-            for element in dataObject.iter():
-                attrib = element.attrib
-                if 'mimeType' in attrib:
-                    ftype = attrib['mimeType']
-                if 'href' in attrib:
-                    href = attrib['href'][1:]
-            if ftype == 'text/xml' and href:
-                self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
-
-        # Set gdal object
-        self.src = gdal.Open(str(self.xmlFiles['manifest']))
-
-        # Set raster size parameters
-        self.xSize = self.src.RasterXSize
-        self.ySize = self.src.RasterYSize
-
-        # Set global metadata attributes
-        self.globalAttribs = self.src.GetMetadata()
-
-        polarisations = root.findall('.//s1sarl1:transmitterReceiverPolarisation',
-                                     namespaces=root.nsmap)
-        for polarisation in polarisations:
-            self.polarisation.append(polarisation.text)
-        self.globalAttribs['polarisation'] = self.polarisation
-
-        self.globalAttribs['ProductTimelinessCategory'] = root.find(
-            './/s1sarl1:productTimelinessCategory', namespaces=root.nsmap).text
-
-        return True
-
     def getGCPs(self):
         """ Get product GCPs utilizing gdal """
         if self.src:
@@ -352,10 +310,14 @@ class Sentinel1_reader_and_NetCDF_converter:
         nclat.standard_name = 'latitude'
         nclat[:, :] = lat
 
+        del lat
+
         nclon.long_name = 'longitude'
         nclon.units = 'degrees_east'
         nclon.standard_name = 'longitude'
         nclon[:, :] = lon
+
+        del lon
 
         # Add raw measurement layers
         ##########################################################
@@ -377,6 +339,8 @@ class Sentinel1_reader_and_NetCDF_converter:
             var.polarisation = "%s" % band_metadata['POLARISATION']
             print((band.GetVirtualMemArray().shape))
             var[0, :, :] = band.GetVirtualMemArray()
+
+            band = None
 
         # set grid mapping(?)
         ##########################################################
@@ -407,6 +371,8 @@ class Sentinel1_reader_and_NetCDF_converter:
             var.polarisation = "%s" % current_polarisation
             var[0, :, :] = resampled_calibration
 
+            del resampled_calibration
+
         # Add noise layers
         ##########################################################
         # Status
@@ -427,6 +393,8 @@ class Sentinel1_reader_and_NetCDF_converter:
             var.grid_mapping = "crsWGS84"
             var.polarisation = "%s" % polarisation
             var[0, :, :] = noiseCorrectionMatrix
+
+            del noiseCorrectionMatrix
 
         # Add subswath layers
         ##########################################################
@@ -796,6 +764,10 @@ class Sentinel1_reader_and_NetCDF_converter:
         tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
         longitude = tck(yi, xi)
 
+        del lat
+        del lon
+        del tck
+
         return latitude, longitude
 
     def readSwathList(self, noiseVector):  # ,imageAnnotationDict):
@@ -1085,7 +1057,8 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_03' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_gdal_02' / product
+        outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
             indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
