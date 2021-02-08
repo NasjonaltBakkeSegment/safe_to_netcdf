@@ -20,7 +20,6 @@ import pathlib
 import math
 from collections import defaultdict
 from datetime import datetime
-import gdal
 import lxml.etree as ET
 import netCDF4
 import numpy as np
@@ -28,9 +27,11 @@ import osgeo.ogr as ogr
 import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
+from osgeo import gdal
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import os
+gdal.UseExceptions()
 
 
 class Sentinel2_reader_and_NetCDF_converter:
@@ -123,11 +124,24 @@ class Sentinel2_reader_and_NetCDF_converter:
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
 
         with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
-            ncout.createDimension('time', 0)
+            ncout.createDimension('time', 1)
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
+
+            nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+            nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+            lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
+            nclat.long_name = 'latitude'
+            nclat.units = 'degrees_north'
+            nclat.standard_name = 'latitude'
+            nclat[:,:]=lat
+
+            nclon.long_name = 'longitude'
+            nclon.units = 'degrees_east'
+            nclon.standard_name = 'longitude'
+            nclon[:,:]=lon
 
             # Add projection coordinates
             ##########################################################
@@ -146,20 +160,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncy.units = 'm'
             ncy.standard_name = 'projection_y_coordinate'
             ncy[:] = ynp
-
-            ### tmp - lat lon
-            ##nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            ##nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            ##lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
-            ##nclat.long_name = 'latitude'
-            ##nclat.units = 'degrees_north'
-            ##nclat.standard_name = 'latitude'
-            ##nclat[:,:]=lat
-
-            ##nclon.long_name = 'longitude'
-            ##nclon.units = 'degrees_east'
-            ##nclon.standard_name = 'longitude'
-            ##nclon[:,:]=lon
 
             # Add raw measurement layers
             # Currently adding TCI
@@ -189,9 +189,9 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                   complevel=compression_level,
                                                   chunksizes=(1,) + chunk_size)
                     varout.units = "1"
+                    varout.coordinates = "lat lon" ;
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = 'TCI RGB from B4, B3 and B2'
-                    ##varout.coordinates = "lat lon" ;
                     varout._Unsigned = "true"
                     for i in range(1, subdataset.RasterCount + 1):
                         current_band = subdataset.GetRasterBand(i)
@@ -212,14 +212,13 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                       zlib=True, complevel=compression_level,
                                                       chunksizes=chunk_size)
                         varout.units = "1"
+                        varout.coordinates = "lat lon" ;
                         varout.grid_mapping = "UTM_projection"
-                        varout._Unsigned = "true"
-                        ##varout.coordinates = "lat lon" ;
-                        varout.long_name = 'Reflectance in band %s' % varName
                         if self.processing_level == 'Level-2A':
                             varout.standard_name = 'surface_bidirectional_reflectance'
                         else:
                             varout.standard_name = 'toa_bidirectional_reflectance'
+                        varout.long_name = 'Reflectance in band %s' % varName
                         if band_metadata:
                             varout.bandwidth = band_metadata['BANDWIDTH']
                             varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
@@ -227,6 +226,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                             varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
                             varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
                             varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
+                        varout._Unsigned = "true"
                         # from DN to reflectance
                         print((varName, subdataset_geotransform))
                         if subdataset_geotransform[1] != 10:
@@ -243,10 +243,9 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             source_crs = osr.SpatialReference()
             source_crs.ImportFromWkt(self.reference_band.GetProjection())
-            nc_crs = ncout.createVariable('UTM_projection', np.int32, ('time'))
+            nc_crs = ncout.createVariable('UTM_projection', np.int32)
             nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
             nc_crs.proj4_string = source_crs.ExportToProj4()
-            nc_crs.crs_wkt = source_crs.ExportToWkt()
             nc_crs.semi_major_axis = source_crs.GetSemiMajor()
             nc_crs.scale_factor_at_central_meridian = source_crs.GetProjParm('scale_factor')
             nc_crs.longitude_of_central_meridian = source_crs.GetProjParm('central_meridian')
@@ -255,7 +254,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_crs.false_easting = source_crs.GetProjParm('false_easting')
             nc_crs.false_northing = source_crs.GetProjParm('false_northing')
             nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
-            nc_crs.crs_wkt = self.reference_band.GetProjection()
 
             # Add vector layers
             ##########################################################
@@ -280,8 +278,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                           chunksizes=chunk_size)
                         varout.long_name = f"{layer_name} mask 10m resolution"
                         varout.comment = f"Rasterized {comment_name} information."
+                        varout.coordinates = "lat lon"
                         varout.grid_mapping = "UTM_projection"
-                        ##varout.coordinates = "lat lon" ;
                         varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
                         varout.flag_meanings = ' '.join(
                             [key.replace('-', '_') for key in list(layer_mask.keys())])
@@ -360,8 +358,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                     varout.long_name = 'Solar %s angle' % k.split('_')[-1]
                 else:
                     varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
-
-                ##varout.coordinates = 'lat lon'
+                varout.coordinates = 'lat lon'
                 varout.grid_mapping = "UTM_projection"
                 varout.comment = '1 to 1 with original 22x22 resolution'
                 varout[0, :, :] = resampled_angles
@@ -400,35 +397,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                 msg_var.long_name = "Original SAFE product structure."
                 msg_var[:] = netCDF4.stringtochar(np.array([self.SAFE_structure], 'S'))
 
-            # Add orbit specific data
-            ##########################################################
-            # Status
-            print('\nAdding satellite orbit specific data')
-            utils.memory_use(self.t0)
-
-            root = utils.xml_read(self.mainXML)
-            if not self.dterrengdata:
-                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
-                                                              namespaces=root.nsmap).text
-            else:
-                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
-
-            ncout.createDimension('orbit_dim', 3)
-            nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
-            rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
-            orb_nb = self.globalAttribs['orbitNumber']
-            orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
-            platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
-
-            nc_orb.relativeOrbitNumber = rel_orb_nb
-            nc_orb.orbitNumber = orb_nb
-            nc_orb.orbitDirection = orb_dir
-            nc_orb.platform = platform
-            nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
-                                 "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
-
-            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
-
             # Add global attributes
             ##########################################################
             # Status
@@ -440,7 +408,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
             ncout.file_creation_date = nowstr
 
-            self.globalAttribs['Conventions'] = "CF-1.8"
+            self.globalAttribs['Conventions'] = "CF-1.6"
             self.globalAttribs[
                 'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
                 self.processing_level)
@@ -450,6 +418,13 @@ class Sentinel2_reader_and_NetCDF_converter:
             self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
             self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
             self.globalAttribs['source'] = "surface observation"
+            root = utils.xml_read(self.mainXML)
+            if not self.dterrengdata:
+                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
+                                                              namespaces=root.nsmap).text
+            else:
+                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+
             self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
                 'DATATAKE_1_SENSING_ORBIT_NUMBER')
             ncout.setncatts(self.globalAttribs)

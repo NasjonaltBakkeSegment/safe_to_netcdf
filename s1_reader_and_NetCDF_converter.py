@@ -287,17 +287,17 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
-        ncout.createDimension('time', size=None)
+        ncout.createDimension('time', 1)
         ncout.createDimension('x', self.xSize)
         ncout.createDimension('y', self.ySize)
+
+        # Set time value
+        utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
 
         nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True,
                                      complevel=compression_level, chunksizes=chunk_size[1:])
         nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True,
                                      complevel=compression_level, chunksizes=chunk_size[1:])
-
-        # Set time value
-        utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
 
         # Add latitude and longitude layers
         ##########################################################
@@ -526,6 +526,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
         self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
         self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
+
         ncout.setncatts(self.globalAttribs)
         ncout.sync()
 
