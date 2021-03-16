@@ -1058,7 +1058,7 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_gdal_02' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_production_local_01' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
