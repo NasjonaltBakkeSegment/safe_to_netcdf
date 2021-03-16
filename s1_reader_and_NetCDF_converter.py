@@ -18,8 +18,7 @@ import netCDF4
 import numpy as np
 from scipy import interpolate
 import pathlib
-#import safe_to_netcdf.utils as utils
-import utils as utils
+import safe_to_netcdf.utils as utils
 
 
 class Sentinel1_reader_and_NetCDF_converter:

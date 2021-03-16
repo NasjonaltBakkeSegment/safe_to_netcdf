@@ -28,10 +28,8 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
-##import safe_to_netcdf.utils as utils
-##import safe_to_netcdf.constants as cst
-import utils
-import constants as cst
+import safe_to_netcdf.utils as utils
+import safe_to_netcdf.constants as cst
 import os
 gdal.UseExceptions()
 
