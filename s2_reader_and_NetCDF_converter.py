@@ -28,8 +28,10 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
-import safe_to_netcdf.utils as utils
-import safe_to_netcdf.constants as cst
+##import safe_to_netcdf.utils as utils
+##import safe_to_netcdf.constants as cst
+import utils
+import constants as cst
 import os
 gdal.UseExceptions()
 
@@ -184,19 +186,18 @@ class Sentinel2_reader_and_NetCDF_converter:
                 if ("True color image" in v) or ('TCI' in v):
                     ncout.createDimension('dimension_rgb', subdataset.RasterCount)
                     varout = ncout.createVariable('TCI', 'u1',
-                                                  ('time', 'dimension_rgb', 'y', 'x'),
+                                                  ('dimension_rgb', 'y', 'x'),
                                                   fill_value=0, zlib=True,
-                                                  complevel=compression_level,
-                                                  chunksizes=(1,) + chunk_size)
+                                                  complevel=compression_level)
                     varout.units = "1"
-                    varout.coordinates = "lat lon" ;
+                    varout.coordinates = "lat lon"
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = 'TCI RGB from B4, B3 and B2'
                     varout._Unsigned = "true"
                     for i in range(1, subdataset.RasterCount + 1):
                         current_band = subdataset.GetRasterBand(i)
                         band_measurement = current_band.GetVirtualMemArray()
-                        varout[0, i - 1, :, :] = band_measurement
+                        varout[i - 1, :, :] = band_measurement
                 # Reflectance data for each band
                 else:
                     for i in range(1, subdataset.RasterCount + 1):
@@ -422,8 +423,9 @@ class Sentinel2_reader_and_NetCDF_converter:
             if not self.dterrengdata:
                 self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
                                                               namespaces=root.nsmap).text
-            else:
-                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+            # Commented out to be stricly identical to older SAFE2NC version in production
+            #else:
+            #    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
 
             self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
                 'DATATAKE_1_SENSING_ORBIT_NUMBER')
@@ -550,12 +552,12 @@ class Sentinel2_reader_and_NetCDF_converter:
                     angles_resampled[i * step:new_dim, j * step:new_dim] = angles[i, j]
         return angles_resampled
 
-    def rasterizeVectorLayers(self, nx, ny, shapefile):
+    def rasterizeVectorLayers(self, nx, ny, gmlfile):
 
         # Open the data source and read in the extent
         NoData_value = 0
 
-        source_ds = ogr.Open(str(shapefile))
+        source_ds = ogr.Open(str(gmlfile))
         source_layer = source_ds.GetLayer()
         # Check that gml file contains features
         if source_layer is None:
@@ -662,16 +664,16 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
-    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
+    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
     #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    ##products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+    ##            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_20' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_production_local_01' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
