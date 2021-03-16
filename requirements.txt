@@ -1,0 +1,5 @@
+netcdf4
+scipy
+numpy
+gdal>=2.1.1
+pyproj
