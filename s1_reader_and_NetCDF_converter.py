@@ -291,13 +291,13 @@ class Sentinel1_reader_and_NetCDF_converter:
         ncout.createDimension('x', self.xSize)
         ncout.createDimension('y', self.ySize)
 
+        # Set time value
+        utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
         nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True,
                                      complevel=compression_level, chunksizes=chunk_size[1:])
         nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True,
                                      complevel=compression_level, chunksizes=chunk_size[1:])
 
-        # Set time value
-        utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
 
         # Add latitude and longitude layers
         ##########################################################

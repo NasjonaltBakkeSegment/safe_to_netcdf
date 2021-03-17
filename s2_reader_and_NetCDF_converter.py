@@ -198,12 +198,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                       chunksizes=chunk_size)
                         varout.units = "1"
                         varout.grid_mapping = "UTM_projection"
-                        varout._Unsigned = "true"
-                        varout.long_name = 'Reflectance in band %s' % varName
                         if self.processing_level == 'Level-2A':
                             varout.standard_name = 'surface_bidirectional_reflectance'
                         else:
                             varout.standard_name = 'toa_bidirectional_reflectance'
+                        varout.long_name = 'Reflectance in band %s' % varName
                         if band_metadata:
                             varout.bandwidth = band_metadata['BANDWIDTH']
                             varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
@@ -211,6 +210,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                             varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
                             varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
                             varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
+                        varout._Unsigned = "true"
                         # from DN to reflectance
                         print((varName, subdataset_geotransform))
                         if subdataset_geotransform[1] != 10:
@@ -417,7 +417,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
             ncout.file_creation_date = nowstr
 
-            self.globalAttribs['Conventions'] = "CF-1.8"
             self.globalAttribs[
                 'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
                 self.processing_level)
@@ -429,6 +428,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             self.globalAttribs['source'] = "surface observation"
             self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
                 'DATATAKE_1_SENSING_ORBIT_NUMBER')
+            self.globalAttribs['Conventions'] = "CF-1.8"
             ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
