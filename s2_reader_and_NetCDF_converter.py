@@ -206,37 +206,42 @@ class Sentinel2_reader_and_NetCDF_converter:
                         else:
                             band_metadata = current_band.GetMetadata()
                             varName = band_metadata['BANDNAME']
-                        varout = ncout.createVariable(varName, np.uint16,
-                                                      ('time', 'y', 'x'), fill_value=0,
-                                                      zlib=True, complevel=compression_level,
-                                                      chunksizes=chunk_size)
-                        varout.units = "1"
-                        varout.coordinates = "lat lon" ;
-                        varout.grid_mapping = "UTM_projection"
-                        if self.processing_level == 'Level-2A':
-                            varout.standard_name = 'surface_bidirectional_reflectance'
-                        else:
-                            varout.standard_name = 'toa_bidirectional_reflectance'
-                        varout.long_name = 'Reflectance in band %s' % varName
-                        if band_metadata:
-                            varout.bandwidth = band_metadata['BANDWIDTH']
-                            varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
-                            varout.wavelength = band_metadata['WAVELENGTH']
-                            varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
-                            varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
-                            varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                        varout._Unsigned = "true"
-                        # from DN to reflectance
-                        print((varName, subdataset_geotransform))
-                        if subdataset_geotransform[1] != 10:
-                            current_size = current_band.XSize
-                            band_measurement = scipy.ndimage.zoom(
-                                input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
-                                order=0)
-                        else:
-                            band_measurement = current_band.GetVirtualMemArray()
-                        #print(band_measurement.shape)
-                        varout[0, :, :] = band_measurement
+                        print(varName)
+                        if varName.startswith('B'):
+                            varout = ncout.createVariable(varName, np.uint16,
+                                                          ('time', 'y', 'x'), fill_value=0,
+                                                          zlib=True, complevel=compression_level,
+                                                          chunksizes=chunk_size)
+                            varout.units = "1"
+                            varout.coordinates = "lat lon"
+                            varout.grid_mapping = "UTM_projection"
+                            if self.processing_level == 'Level-2A':
+                                varout.standard_name = 'surface_bidirectional_reflectance'
+                            else:
+                                varout.standard_name = 'toa_bidirectional_reflectance'
+                            varout.long_name = 'Reflectance in band %s' % varName
+                            if band_metadata:
+                                #try:
+                                varout.bandwidth = band_metadata['BANDWIDTH']
+                                varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
+                                varout.wavelength = band_metadata['WAVELENGTH']
+                                varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
+                                varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
+                                varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
+                                #except KeyError as e:
+                                #    print(f'Metadata not found: {e}')
+                            varout._Unsigned = "true"
+                            # from DN to reflectance
+                            print((varName, subdataset_geotransform))
+                            if subdataset_geotransform[1] != 10:
+                                current_size = current_band.XSize
+                                band_measurement = scipy.ndimage.zoom(
+                                    input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
+                                    order=0)
+                            else:
+                                band_measurement = current_band.GetVirtualMemArray()
+                            #print(band_measurement.shape)
+                            varout[0, :, :] = band_measurement
 
             # set grid mapping
             ##########################################################
@@ -292,18 +297,18 @@ class Sentinel2_reader_and_NetCDF_converter:
                 utils.memory_use(self.t0)
                 gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
                 l2a_kv = {}
-                for layer in list(cst.s2_l2a_layers.keys()):
-                    for k, v in list(self.imageFiles.items()):
+                for layer in cst.s2_l2a_layers:
+                    for k, v in self.imageFiles.items():
                         if layer in k:
                             l2a_kv[k] = cst.s2_l2a_layers[k]
-                        elif layer in v:
-                            print((layer, v, k))
+                        elif layer in str(v):
+                            print((layer, str(v), k))
                             l2a_kv[k] = cst.s2_l2a_layers[layer]
 
-                for k, v in list(l2a_kv.items()):
+                for k, v in l2a_kv.items():
                     print((k, v))
                     varName, longName = v.split(',')
-                    SourceDS = gdal.Open(self.SAFE_path + self.imageFiles[k], gdal.GA_ReadOnly)
+                    SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
                     if SourceDS.RasterCount > 1:
                         print("Raster data contains more than one layer")
                     NDV = SourceDS.GetRasterBand(1).GetNoDataValue()
@@ -669,12 +674,15 @@ if __name__ == '__main__':
     ##products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
     ##            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
+    products = ['S2A_MSIL2A_20210119T103351_N0214_R108_T32VNL_20210119T110828']
+
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_production_local_01' / product
+        outdir = workdir / 'NBS_test_data' / 'local_s2l2a_01' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            indir=workdir / 'NBS_test_data' / 'local_s2l2a_01',
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
