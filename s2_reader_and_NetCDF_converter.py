@@ -31,7 +31,6 @@ from osgeo import gdal
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import os
-gdal.UseExceptions()
 
 
 class Sentinel2_reader_and_NetCDF_converter:
@@ -124,24 +123,11 @@ class Sentinel2_reader_and_NetCDF_converter:
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
 
         with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
-            ncout.createDimension('time', 1)
+            ncout.createDimension('time', 0)
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
-
-            nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
-            nclat.long_name = 'latitude'
-            nclat.units = 'degrees_north'
-            nclat.standard_name = 'latitude'
-            nclat[:,:]=lat
-
-            nclon.long_name = 'longitude'
-            nclon.units = 'degrees_east'
-            nclon.standard_name = 'longitude'
-            nclon[:,:]=lon
 
             # Add projection coordinates
             ##########################################################
@@ -184,18 +170,18 @@ class Sentinel2_reader_and_NetCDF_converter:
                 if ("True color image" in v) or ('TCI' in v):
                     ncout.createDimension('dimension_rgb', subdataset.RasterCount)
                     varout = ncout.createVariable('TCI', 'u1',
-                                                  ('dimension_rgb', 'y', 'x'),
+                                                  ('time', 'dimension_rgb', 'y', 'x'),
                                                   fill_value=0, zlib=True,
-                                                  complevel=compression_level)
+                                                  complevel=compression_level,
+                                                  chunksizes=(1,) + chunk_size)
                     varout.units = "1"
-                    varout.coordinates = "lat lon"
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = 'TCI RGB from B4, B3 and B2'
                     varout._Unsigned = "true"
                     for i in range(1, subdataset.RasterCount + 1):
                         current_band = subdataset.GetRasterBand(i)
                         band_measurement = current_band.GetVirtualMemArray()
-                        varout[i - 1, :, :] = band_measurement
+                        varout[0, i - 1, :, :] = band_measurement
                 # Reflectance data for each band
                 else:
                     for i in range(1, subdataset.RasterCount + 1):
@@ -211,13 +197,13 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                       zlib=True, complevel=compression_level,
                                                       chunksizes=chunk_size)
                         varout.units = "1"
-                        varout.coordinates = "lat lon" ;
                         varout.grid_mapping = "UTM_projection"
+                        varout._Unsigned = "true"
+                        varout.long_name = 'Reflectance in band %s' % varName
                         if self.processing_level == 'Level-2A':
                             varout.standard_name = 'surface_bidirectional_reflectance'
                         else:
                             varout.standard_name = 'toa_bidirectional_reflectance'
-                        varout.long_name = 'Reflectance in band %s' % varName
                         if band_metadata:
                             varout.bandwidth = band_metadata['BANDWIDTH']
                             varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
@@ -225,7 +211,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                             varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
                             varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
                             varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                        varout._Unsigned = "true"
                         # from DN to reflectance
                         print((varName, subdataset_geotransform))
                         if subdataset_geotransform[1] != 10:
@@ -235,16 +220,16 @@ class Sentinel2_reader_and_NetCDF_converter:
                                 order=0)
                         else:
                             band_measurement = current_band.GetVirtualMemArray()
-                        #print(band_measurement.shape)
                         varout[0, :, :] = band_measurement
 
             # set grid mapping
             ##########################################################
             source_crs = osr.SpatialReference()
             source_crs.ImportFromWkt(self.reference_band.GetProjection())
-            nc_crs = ncout.createVariable('UTM_projection', np.int32)
+            nc_crs = ncout.createVariable('UTM_projection', np.int32, ('time'))
             nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
             nc_crs.proj4_string = source_crs.ExportToProj4()
+            nc_crs.crs_wkt = source_crs.ExportToWkt()
             nc_crs.semi_major_axis = source_crs.GetSemiMajor()
             nc_crs.scale_factor_at_central_meridian = source_crs.GetProjParm('scale_factor')
             nc_crs.longitude_of_central_meridian = source_crs.GetProjParm('central_meridian')
@@ -253,6 +238,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_crs.false_easting = source_crs.GetProjParm('false_easting')
             nc_crs.false_northing = source_crs.GetProjParm('false_northing')
             nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
+            nc_crs.crs_wkt = self.reference_band.GetProjection()
 
             # Add vector layers
             ##########################################################
@@ -277,7 +263,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                           chunksizes=chunk_size)
                         varout.long_name = f"{layer_name} mask 10m resolution"
                         varout.comment = f"Rasterized {comment_name} information."
-                        varout.coordinates = "lat lon"
                         varout.grid_mapping = "UTM_projection"
                         varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
                         varout.flag_meanings = ' '.join(
@@ -312,13 +297,10 @@ class Sentinel2_reader_and_NetCDF_converter:
                     GeoT = SourceDS.GetGeoTransform()
                     DataType = gdal_nc_data_types[
                         gdal.GetDataTypeName(SourceDS.GetRasterBand(1).DataType)]
-                    # print(NDV, xsize, ysize, GeoT, DataType)
-
                     varout = ncout.createVariable(varName, DataType,
                                                   ('time', 'y', 'x'), fill_value=0, zlib=True,
                                                   complevel=compression_level,
                                                   chunksizes=chunk_size)
-                    # varout.coordinates = "lat lon" ;
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = longName
                     if varName == "SCL":
@@ -357,7 +339,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                     varout.long_name = 'Solar %s angle' % k.split('_')[-1]
                 else:
                     varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
-                varout.coordinates = 'lat lon'
                 varout.grid_mapping = "UTM_projection"
                 varout.comment = '1 to 1 with original 22x22 resolution'
                 varout[0, :, :] = resampled_angles
@@ -396,6 +377,35 @@ class Sentinel2_reader_and_NetCDF_converter:
                 msg_var.long_name = "Original SAFE product structure."
                 msg_var[:] = netCDF4.stringtochar(np.array([self.SAFE_structure], 'S'))
 
+            # Add orbit specific data
+            ##########################################################
+            # Status
+            print('\nAdding satellite orbit specific data')
+            utils.memory_use(self.t0)
+
+            root = utils.xml_read(self.mainXML)
+            if not self.dterrengdata:
+                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
+                                                              namespaces=root.nsmap).text
+            else:
+                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+
+            ncout.createDimension('orbit_dim', 3)
+            nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
+            rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
+            orb_nb = self.globalAttribs['orbitNumber']
+            orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
+            platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
+
+            nc_orb.relativeOrbitNumber = rel_orb_nb
+            nc_orb.orbitNumber = orb_nb
+            nc_orb.orbitDirection = orb_dir
+            nc_orb.platform = platform
+            nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
+                                 "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
+
+            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
+
             # Add global attributes
             ##########################################################
             # Status
@@ -407,7 +417,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
             ncout.file_creation_date = nowstr
 
-            self.globalAttribs['Conventions'] = "CF-1.6"
+            self.globalAttribs['Conventions'] = "CF-1.8"
             self.globalAttribs[
                 'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
                 self.processing_level)
@@ -417,14 +427,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
             self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
             self.globalAttribs['source'] = "surface observation"
-            root = utils.xml_read(self.mainXML)
-            if not self.dterrengdata:
-                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
-                                                              namespaces=root.nsmap).text
-            # Commented out to be stricly identical to older SAFE2NC version in production
-            #else:
-            #    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
-
             self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
                 'DATATAKE_1_SENSING_ORBIT_NUMBER')
             ncout.setncatts(self.globalAttribs)
@@ -550,12 +552,12 @@ class Sentinel2_reader_and_NetCDF_converter:
                     angles_resampled[i * step:new_dim, j * step:new_dim] = angles[i, j]
         return angles_resampled
 
-    def rasterizeVectorLayers(self, nx, ny, gmlfile):
+    def rasterizeVectorLayers(self, nx, ny, shapefile):
 
         # Open the data source and read in the extent
         NoData_value = 0
 
-        source_ds = ogr.Open(str(gmlfile))
+        source_ds = ogr.Open(str(shapefile))
         source_layer = source_ds.GetLayer()
         # Check that gml file contains features
         if source_layer is None:
@@ -662,16 +664,16 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    #products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
+    #products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
     #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
 
-    ##products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-    ##            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+                'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_production_local_01' / product
+        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_local_20' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,

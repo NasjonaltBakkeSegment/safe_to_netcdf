@@ -90,8 +90,6 @@ def initializer(self):
 
     # List of xml / gml files
     if sat == 'S2' and self.dterrengdata:
-        # Added to be strictly identical to older SAFE2NC version - not used otherwise
-        self.xmlFiles['mainXML'] = self.SAFE_dir / 'MTD_MSIL1C.xml'
         # For DTERR data, add manually the list of images / xml-gml files from parsing the SAFE
         # directory
         allFiles = zipfile.ZipFile(self.input_zip).namelist()
@@ -146,17 +144,9 @@ def initializer(self):
         # Set polarisation parameters
         polarisations = root.findall('.//s1sarl1:transmitterReceiverPolarisation',
                                      namespaces=root.nsmap)
-        ##for polarisation in polarisations:
-        ##    self.polarisation.append(polarisation.text)
-        ##self.globalAttribs['polarisation'] = self.polarisation
-
-        # to be identical to python2/Xenial
-        outattrib = ''
         for polarisation in polarisations:
             self.polarisation.append(polarisation.text)
-            outattrib += polarisation.text
-        self.globalAttribs['polarisation'] = [outattrib]
-
+        self.globalAttribs['polarisation'] = self.polarisation
         # Timeliness
         self.globalAttribs['ProductTimelinessCategory'] = root.find(
             './/s1sarl1:productTimelinessCategory', namespaces=root.nsmap).text
