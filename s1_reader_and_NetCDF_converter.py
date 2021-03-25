@@ -678,14 +678,21 @@ class Sentinel1_reader_and_NetCDF_converter:
         xSize = self.xSize
         ySize = self.ySize
 
+        x = list(range(0, xSize))
+        y = list(range(0, ySize))
+
         nb_pixels = (pixels == 0).sum()
         nb_lines = (lines == 0).sum()
         calibration_table = cal_table.reshape(nb_pixels, nb_lines)
-        tck = interpolate.RectBivariateSpline(lines[0::nb_lines], pixels[0:nb_lines],
+        try:
+            tck = interpolate.RectBivariateSpline(lines[0::nb_lines], pixels[0:nb_lines],
                                               calibration_table)
-        x = list(range(0, xSize))
-        y = list(range(0, ySize))
-        lutOut = tck(y, x)
+            lutOut = tck(y, x)
+        # For non-monotonous data. Keep RectBivariateSpline for simpler cases as way faster.
+        except ValueError:
+            tck = interpolate.interp2d(lines[0::nb_lines], pixels[0:nb_lines], calibration_table.T)
+            lutOut = tck(y, x).T
+
         return lutOut
 
     def getGCPValues(self, xmlfile, parameter):
@@ -987,12 +994,18 @@ if __name__ == '__main__':
     products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
                 'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
 
+    # Noise matrix pb
+    products = ['S1A_EW_GRDH_1SDH_20201023T180210_20201023T180420_034927_0412AD_4F16']
+
+    #products = ['S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
+
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'safe2nc_latest_gdal_02' / product
+        outdir = workdir / 'NBS_test_data' / 'bugfix_noise_02' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            indir=workdir / 'NBS_test_data' / 'zips',
+            #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
