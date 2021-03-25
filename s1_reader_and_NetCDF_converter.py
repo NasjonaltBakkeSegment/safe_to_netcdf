@@ -708,23 +708,20 @@ class Sentinel1_reader_and_NetCDF_converter:
         xSize = self.xSize
         ySize = self.ySize
 
+        x = list(range(0, xSize))
+        y = list(range(0, ySize))
+
         nb_pixels = (pixels == 0).sum()
         nb_lines = (lines == 0).sum()
         calibration_table = cal_table.reshape(nb_pixels, nb_lines)
         try:
             tck = interpolate.RectBivariateSpline(lines[0::nb_lines], pixels[0:nb_lines],
                                               calibration_table)
+            lutOut = tck(y, x)
+        # For non-monotonous data. Keep RectBivariateSpline for simpler cases as way faster.
         except ValueError:
             tck = interpolate.interp2d(lines[0::nb_lines], pixels[0:nb_lines], calibration_table.T)
-
-        #tck2 = interpolate.interp2d(lines[0::nb_lines], pixels[0:nb_lines], calibration_table.T)
-        x = list(range(0, xSize))
-        y = list(range(0, ySize))
-        lutOut = tck(y, x)
-        #lutOut2 = tck(y, x)
-
-        #print('interpolation')
-        #print(np.isclose(lutOut, lutOut2).all())
+            lutOut = tck(y, x).T
 
         return lutOut
 
