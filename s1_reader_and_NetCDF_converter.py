@@ -287,12 +287,37 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
-        ncout.createDimension('time', size=None)
+        ncout.createDimension('time', 1)
         ncout.createDimension('x', self.xSize)
         ncout.createDimension('y', self.ySize)
 
         # Set time value
         utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
+
+        nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True,
+                                     complevel=compression_level, chunksizes=chunk_size[1:])
+        nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True,
+                                     complevel=compression_level, chunksizes=chunk_size[1:])
+
+        # Add latitude and longitude layers
+        ##########################################################
+        # Status
+        utils.memory_use(self.t0)
+
+        lat, lon = self.genLatLon_regGrid()  # Assume gcps are on a regular grid
+        nclat.long_name = 'latitude'
+        nclat.units = 'degrees_north'
+        nclat.standard_name = 'latitude'
+        nclat[:, :] = lat
+
+        del lat
+
+        nclon.long_name = 'longitude'
+        nclon.units = 'degrees_east'
+        nclon.standard_name = 'longitude'
+        nclon[:, :] = lon
+
+        del lon
 
         # Add raw measurement layers
         ##########################################################
@@ -308,6 +333,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                                        chunksizes=chunk_size)
             var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
             var.units = "1"
+            var.coordinates = "lat lon"
             var.grid_mapping = "crsWGS84"
             var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
             var.polarisation = "%s" % band_metadata['POLARISATION']
@@ -340,6 +366,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                                        chunksizes=chunk_size)
             var.long_name = '%s calibration table' % calibration
             var.units = "1"
+            var.coordinates = "lat lon"
             var.grid_mapping = "crsWGS84"
             var.polarisation = "%s" % current_polarisation
             var[0, :, :] = resampled_calibration
@@ -362,6 +389,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                                        chunksizes=chunk_size)
             var.long_name = 'Thermal noise correction vector power values.'
             var.units = "1"
+            var.coordinates = "lat lon"
             var.grid_mapping = "crsWGS84"
             var.polarisation = "%s" % polarisation
             var[0, :, :] = noiseCorrectionMatrix
@@ -389,6 +417,7 @@ class Sentinel1_reader_and_NetCDF_converter:
             swathList.flag_meanings = flags_meanings.strip()
             swathList.standard_name = "status_flag"
             swathList.units = "1"
+            swathList.coordinates = "lat lon"
             swathList.grid_mapping = "crsWGS84"
             # swathList.polarisation = "%s" %  polarisation
             swathList[:] = swathLayer
@@ -497,6 +526,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
         self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
         self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
+
         ncout.setncatts(self.globalAttribs)
         ncout.sync()
 
@@ -708,6 +738,45 @@ class Sentinel1_reader_and_NetCDF_converter:
             out_list.append(l.find(parameter).text)
 
         return polarisation, out_list
+
+    def genLatLon_regGrid(self):
+        """ Method providing latitude and longitude arrays """
+        # Extract GCPs to vector arrays
+        gcps = self.gcps
+        xsize = self.xSize
+        ysize = self.ySize
+        ngcp = len(gcps)
+        # print ngcp
+        x = []
+        y = []
+        lon = []
+        lat = []
+        idx = 0
+
+        for gcp in gcps:
+            if gcp.GCPPixel == 0:
+                y.append(gcp.GCPLine)
+            if gcp.GCPLine == 0:
+                x.append(gcp.GCPPixel)
+            lon.append(gcp.GCPX)
+            lat.append(gcp.GCPY)
+        x = np.array(x, np.int32)
+        y = np.array(y, np.int32)
+        lat = np.array(lat, np.float32)
+        lon = np.array(lon, np.float32)
+
+        xi = list(range(0, xsize))
+        yi = list(range(0, ysize))
+        tck = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
+        latitude = tck(yi, xi)
+        tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
+        longitude = tck(yi, xi)
+
+        del lat
+        del lon
+        del tck
+
+        return latitude, longitude
 
     def readSwathList(self, noiseVector):  # ,imageAnnotationDict):
         """ Returns dictionary with swath ID as key and number of azimuth denoising
