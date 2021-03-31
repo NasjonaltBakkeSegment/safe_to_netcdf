@@ -28,6 +28,7 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
+import geopandas as geopd
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import os
@@ -250,25 +251,22 @@ class Sentinel2_reader_and_NetCDF_converter:
             for gmlfile in self.xmlFiles.values():
                 if gmlfile and gmlfile.suffix == '.gml':
                     layer = gmlfile.stem
-                    rasterized_ok, layer_mask, mask = self.rasterizeVectorLayers(nx, ny, gmlfile)
+                    if layer == "MSK_CLOUDS_B00":
+                        layer = 'Clouds'
+                        comment = 'cloud'
+                    else:
+                        comment = 'vector'
+                    mask, mask_flags = self.write_shape(gmlfile, layer, ncout)
                     # build transformer, assuming matching coordinate systems.
-                    if rasterized_ok:
-                        if layer == "MSK_CLOUDS_B00":
-                            layer_name = 'Clouds'
-                            comment_name = 'cloud'
-                        else:
-                            layer_name = layer
-                            comment_name = 'vector'
-                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
-                                                          fill_value=-1, zlib=True,
-                                                          chunksizes=chunk_size)
-                        varout.long_name = f"{layer_name} mask 10m resolution"
-                        varout.comment = f"Rasterized {comment_name} information."
+                    if mask is not None:
+                        varout = ncout.createVariable(layer, 'i1', ('time', f'instance_{layer}'))
+                        # todo: update long_name and comment
+                        varout.long_name = f"{layer} mask 10m resolution"
+                        varout.comment = f"Rasterized {comment} information."
                         varout.grid_mapping = "UTM_projection"
-                        varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
-                        varout.flag_meanings = ' '.join(
-                            [key.replace('-', '_') for key in list(layer_mask.keys())])
                         varout[0, :] = mask
+                        varout.flags = mask_flags
+
 
             # Add Level-2A layers
             ##########################################################
@@ -660,6 +658,72 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         return ET.tostring(ET_root)
 
+    def write_shape(self, shapefile, name, ncfile):
+        """
+        Shapefile must contain Polygon continuous type geometries only.
+        -> no holes either
+        Args:
+            nx:
+            ny:
+            shapefile:
+
+        Returns:
+        #todo: think if x, y are the same for different layers. probably the case for the
+        defective pixels at least? surely cloud is unique. what about for the shadows?
+        """
+
+        # Read data from shapefile
+        try:
+            src = geopd.read_file(shapefile)
+        except ValueError:
+            print(f'No data in {shapefile}')
+            # should exit or what?
+            return None, None
+
+        # Get information:
+        # - nb of shapes in input file
+        nGeometries = src.shape[0]
+        # - list of nodes for each shape
+        nodes = src['geometry'].apply(lambda x: x.exterior.coords)
+        # - nb of nodes for each shape
+        nNodesPerGeom = [len(x) for x in nodes]
+        # - x, y coordinate for each node of each shape
+        flat_nodes = [y for x in nodes for y in x]
+        #todo: think if we need 3d !?
+        try:
+            x, y = zip(*flat_nodes)
+        except ValueError:
+            x, y, z = zip(*flat_nodes)
+
+        # Add new dimensions and variables to nc file
+        ncfile.createDimension(f'instance_{name}', nGeometries)
+        ncfile.createDimension(f'node_{name}', sum(nNodesPerGeom))
+        ncgeom = ncfile.createVariable(f'geometry_container_{name}', 'f4')
+        ncgeom.geometry_type = "polygon"
+        # variable counting nb of nodes per feature
+        ncgeom.node_count = f'node_count_{name}'
+        # variables containing spatial node data
+        ncgeom.node_coordinates = f'x_node_{name} y_node_{name}'    # variables containing spatial
+
+        #todo: check what standard_name should those have?
+        # is it ok to have several x y coordinates?
+        ncxnode = ncfile.createVariable(f'x_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncxnode.units = 'm'
+        ncxnode.standard_name = 'projection_x_coordinate'
+        ncynode = ncfile.createVariable(f'y_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncynode.units = 'm'
+        ncynode.standard_name = 'projection_y_coordinate'
+        ncxnode[:] = x
+        ncynode[:] = y
+
+        flags = src.gml_id
+        if name == 'Clouds':
+            values = flags.apply(lambda x: int(x.split('.')[-1])+1)
+        else:
+            values = flags.apply(lambda x: int(x[-1])+1)
+
+        return values, [i + ' : ' + str(j) for i, j in zip(flags, values)]
+
 
 if __name__ == '__main__':
 
@@ -672,15 +736,15 @@ if __name__ == '__main__':
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
                 'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
-    products = ['S2A_MSIL2A_20210119T103351_N0214_R108_T32VNL_20210119T110828']
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'local_s2l2a_01' / product
+        outdir = workdir / 'NBS_test_data' / 'cf18_01' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
             #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
-            indir=workdir / 'NBS_test_data' / 'local_s2l2a_01',
+            indir=workdir / 'NBS_test_data' / 'cf18_01',
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
