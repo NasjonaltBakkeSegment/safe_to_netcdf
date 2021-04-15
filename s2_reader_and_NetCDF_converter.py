@@ -158,71 +158,71 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding frequency bands layers')
             utils.memory_use(self.t0)
 
-            if self.dterrengdata:
-                # For DTERR data, gdal fails to properly do the src.GetSubDatasets()
-                # so manually read the list of images created beforehand
-                images = [[str(i), i.stem] for i in self.image_list_dterreng]
-            else:
-                images = self.src.GetSubDatasets()
-            for k, v in images:
-                subdataset = gdal.Open(k)
-                subdataset_geotransform = subdataset.GetGeoTransform()
-                # True color image (8 bit true color image)
-                if ("True color image" in v) or ('TCI' in v):
-                    ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                    varout = ncout.createVariable('TCI', 'u1',
-                                                  ('time', 'dimension_rgb', 'y', 'x'),
-                                                  fill_value=0, zlib=True,
-                                                  complevel=compression_level,
-                                                  chunksizes=(1,) + chunk_size)
-                    varout.units = "1"
-                    varout.grid_mapping = "UTM_projection"
-                    varout.long_name = 'TCI RGB from B4, B3 and B2'
-                    varout._Unsigned = "true"
-                    for i in range(1, subdataset.RasterCount + 1):
-                        current_band = subdataset.GetRasterBand(i)
-                        band_measurement = current_band.GetVirtualMemArray()
-                        varout[0, i - 1, :, :] = band_measurement
-                # Reflectance data for each band
-                else:
-                    for i in range(1, subdataset.RasterCount + 1):
-                        current_band = subdataset.GetRasterBand(i)
-                        if self.dterrengdata:
-                            band_metadata = None
-                            varName = cst.s2_bands_aliases[v[-3::]]
-                        else:
-                            band_metadata = current_band.GetMetadata()
-                            varName = band_metadata['BANDNAME']
-                        if varName.startswith('B'):
-                            varout = ncout.createVariable(varName, np.uint16,
-                                                          ('time', 'y', 'x'), fill_value=0,
-                                                          zlib=True, complevel=compression_level,
-                                                          chunksizes=chunk_size)
-                            varout.units = "1"
-                            varout.grid_mapping = "UTM_projection"
-                            if self.processing_level == 'Level-2A':
-                                varout.standard_name = 'surface_bidirectional_reflectance'
-                            else:
-                                varout.standard_name = 'toa_bidirectional_reflectance'
-                            varout.long_name = 'Reflectance in band %s' % varName
-                            if band_metadata:
-                                varout.bandwidth = band_metadata['BANDWIDTH']
-                                varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
-                                varout.wavelength = band_metadata['WAVELENGTH']
-                                varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
-                                varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
-                                varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                            varout._Unsigned = "true"
-                            # from DN to reflectance
-                            print((varName, subdataset_geotransform))
-                            if subdataset_geotransform[1] != 10:
-                                current_size = current_band.XSize
-                                band_measurement = scipy.ndimage.zoom(
-                                    input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
-                                    order=0)
-                            else:
-                                band_measurement = current_band.GetVirtualMemArray()
-                            varout[0, :, :] = band_measurement
+            ###if self.dterrengdata:
+            ###    # For DTERR data, gdal fails to properly do the src.GetSubDatasets()
+            ###    # so manually read the list of images created beforehand
+            ###    images = [[str(i), i.stem] for i in self.image_list_dterreng]
+            ###else:
+            ###    images = self.src.GetSubDatasets()
+            ###for k, v in images:
+            ###    subdataset = gdal.Open(k)
+            ###    subdataset_geotransform = subdataset.GetGeoTransform()
+            ###    # True color image (8 bit true color image)
+            ###    if ("True color image" in v) or ('TCI' in v):
+            ###        ncout.createDimension('dimension_rgb', subdataset.RasterCount)
+            ###        varout = ncout.createVariable('TCI', 'u1',
+            ###                                      ('time', 'dimension_rgb', 'y', 'x'),
+            ###                                      fill_value=0, zlib=True,
+            ###                                      complevel=compression_level,
+            ###                                      chunksizes=(1,) + chunk_size)
+            ###        varout.units = "1"
+            ###        varout.grid_mapping = "UTM_projection"
+            ###        varout.long_name = 'TCI RGB from B4, B3 and B2'
+            ###        varout._Unsigned = "true"
+            ###        for i in range(1, subdataset.RasterCount + 1):
+            ###            current_band = subdataset.GetRasterBand(i)
+            ###            band_measurement = current_band.GetVirtualMemArray()
+            ###            varout[0, i - 1, :, :] = band_measurement
+            ###    # Reflectance data for each band
+            ###    else:
+            ###        for i in range(1, subdataset.RasterCount + 1):
+            ###            current_band = subdataset.GetRasterBand(i)
+            ###            if self.dterrengdata:
+            ###                band_metadata = None
+            ###                varName = cst.s2_bands_aliases[v[-3::]]
+            ###            else:
+            ###                band_metadata = current_band.GetMetadata()
+            ###                varName = band_metadata['BANDNAME']
+            ###            if varName.startswith('B'):
+            ###                varout = ncout.createVariable(varName, np.uint16,
+            ###                                              ('time', 'y', 'x'), fill_value=0,
+            ###                                              zlib=True, complevel=compression_level,
+            ###                                              chunksizes=chunk_size)
+            ###                varout.units = "1"
+            ###                varout.grid_mapping = "UTM_projection"
+            ###                if self.processing_level == 'Level-2A':
+            ###                    varout.standard_name = 'surface_bidirectional_reflectance'
+            ###                else:
+            ###                    varout.standard_name = 'toa_bidirectional_reflectance'
+            ###                varout.long_name = 'Reflectance in band %s' % varName
+            ###                if band_metadata:
+            ###                    varout.bandwidth = band_metadata['BANDWIDTH']
+            ###                    varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
+            ###                    varout.wavelength = band_metadata['WAVELENGTH']
+            ###                    varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
+            ###                    varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
+            ###                    varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
+            ###                varout._Unsigned = "true"
+            ###                # from DN to reflectance
+            ###                print((varName, subdataset_geotransform))
+            ###                if subdataset_geotransform[1] != 10:
+            ###                    current_size = current_band.XSize
+            ###                    band_measurement = scipy.ndimage.zoom(
+            ###                        input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
+            ###                        order=0)
+            ###                else:
+            ###                    band_measurement = current_band.GetVirtualMemArray()
+            ###                varout[0, :, :] = band_measurement
 
             # set grid mapping
             ##########################################################
@@ -250,22 +250,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             for gmlfile in self.xmlFiles.values():
                 if gmlfile and gmlfile.suffix == '.gml':
-                    layer = gmlfile.stem
-                    if layer == "MSK_CLOUDS_B00":
-                        layer = 'Clouds'
-                        comment = 'cloud'
-                    else:
-                        comment = 'vector'
-                    mask, mask_flags = self.write_shape(gmlfile, layer, ncout)
-                    # build transformer, assuming matching coordinate systems.
-                    if mask is not None:
-                        varout = ncout.createVariable(layer, 'i1', ('time', f'instance_{layer}'))
-                        # todo: update long_name and comment
-                        varout.long_name = f"{layer} mask 10m resolution"
-                        varout.comment = f"Rasterized {comment} information."
-                        varout.grid_mapping = "UTM_projection"
-                        varout[0, :] = mask
-                        varout.flags = mask_flags
+                    self.write_vector(gmlfile, ncout)
 
 
             # Add Level-2A layers
@@ -322,26 +307,26 @@ class Sentinel2_reader_and_NetCDF_converter:
             print('\nAdding sun and view angles')
             utils.memory_use(self.t0)
 
-            counter = 1
-            for k, v in list(self.sunAndViewAngles.items()):
-                print(("\tHandeling %i of %i" % (counter, len(self.sunAndViewAngles))))
-                angle_step = int(math.ceil(nx / float(v.shape[0])))
+            ###counter = 1
+            ###for k, v in list(self.sunAndViewAngles.items()):
+            ###    print(("\tHandeling %i of %i" % (counter, len(self.sunAndViewAngles))))
+            ###    angle_step = int(math.ceil(nx / float(v.shape[0])))
 
-                resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
-                                                        type=np.float32)
+            ###    resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
+            ###                                            type=np.float32)
 
-                varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'),
-                                              fill_value=netCDF4.default_fillvals['f4'], zlib=True,
-                                              chunksizes=chunk_size)
-                varout.units = 'degree'
-                if 'sun' in k:
-                    varout.long_name = 'Solar %s angle' % k.split('_')[-1]
-                else:
-                    varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
-                varout.grid_mapping = "UTM_projection"
-                varout.comment = '1 to 1 with original 22x22 resolution'
-                varout[0, :, :] = resampled_angles
-                counter += 1
+            ###    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'),
+            ###                                  fill_value=netCDF4.default_fillvals['f4'], zlib=True,
+            ###                                  chunksizes=chunk_size)
+            ###    varout.units = 'degree'
+            ###    if 'sun' in k:
+            ###        varout.long_name = 'Solar %s angle' % k.split('_')[-1]
+            ###    else:
+            ###        varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
+            ###    varout.grid_mapping = "UTM_projection"
+            ###    varout.comment = '1 to 1 with original 22x22 resolution'
+            ###    varout[0, :, :] = resampled_angles
+            ###    counter += 1
 
             # Add xml files as character values see:
             # https://stackoverflow.com/questions/37079883/string-handling-in-python-netcdf4
@@ -658,71 +643,108 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         return ET.tostring(ET_root)
 
-    def write_shape(self, shapefile, name, ncfile):
+    def write_vector(self, vectorfile, ncfile):
         """
-        Shapefile must contain Polygon continuous type geometries only.
-        -> no holes either
+
+        Write content of a shapefile in netcdf - following CF 1.8 convention
+        Input file can be: any vector-based spatial data (including shape, gml, geojson, ...).
+        Input data can be: polygon(s) with no holes.
+
         Args:
-            nx:
-            ny:
-            shapefile:
+            vectorfile [pathlib.Path]: input vector file
+            ncfile     [pathlib.Path]: output nc file, already existing and open for writing
+        Returns: N/A
 
-        Returns:
-        #todo: think if x, y are the same for different layers. probably the case for the
-        defective pixels at least? surely cloud is unique. what about for the shadows?
         """
 
-        # Read data from shapefile
-        try:
-            src = geopd.read_file(shapefile)
-        except ValueError:
-            print(f'No data in {shapefile}')
-            # should exit or what?
-            return None, None
+        # -------------------------------
+        #    Read input information
+        # -------------------------------
 
-        # Get information:
-        # - nb of shapes in input file
+        # Read data from vector file. Exits if no data found.
+        try:
+            src = geopd.read_file(vectorfile)
+        except ValueError:
+            print(f'No data in {vectorfile}')
+            return
+
+        # - nb of shapes within file
         nGeometries = src.shape[0]
+
         # - list of nodes for each shape
         nodes = src['geometry'].apply(lambda x: x.exterior.coords)
+
         # - nb of nodes for each shape
         nNodesPerGeom = [len(x) for x in nodes]
-        # - x, y coordinate for each node of each shape
+
+        # - x, y, z coordinates for each node of each shape
         flat_nodes = [y for x in nodes for y in x]
-        #todo: think if we need 3d !?
         try:
             x, y = zip(*flat_nodes)
         except ValueError:
             x, y, z = zip(*flat_nodes)
 
-        # Add new dimensions and variables to nc file
+        # Variable name in output nc file
+        name = vectorfile.stem
+        if name == "MSK_CLOUDS_B00":
+            name = 'Clouds'
+
+        # Read actual vector information
+        flags = src.gml_id
+        if name == "Clouds":
+            values = flags.apply(lambda x: int(x.split('.')[-1]) + 1)
+        else:
+            values = flags.apply(lambda x: int(x[-1]) + 1)
+
+        # -------------------------------
+        #    Write to nc file
+        # -------------------------------
+
+        # Add new dimensions
         ncfile.createDimension(f'instance_{name}', nGeometries)
         ncfile.createDimension(f'node_{name}', sum(nNodesPerGeom))
-        ncgeom = ncfile.createVariable(f'geometry_container_{name}', 'f4')
-        ncgeom.geometry_type = "polygon"
-        # variable counting nb of nodes per feature
-        ncgeom.node_count = f'node_count_{name}'
-        # variables containing spatial node data
-        ncgeom.node_coordinates = f'x_node_{name} y_node_{name}'    # variables containing spatial
 
+        # Add new variables:
+
+        # - geometry container
+        geom = ncfile.createVariable(f'geometry_container_{name}', 'i4')
+        geom.geometry_type = "polygon"
+        geom.node_count = f'node_count_{name}'
+        geom.node_coordinates = f'x_node_{name} y_node_{name}'    # variables containing spatial
+        geom.grid_mapping = "UTM_projection"
+
+        # - node count
+        nodecount = ncfile.createVariable(f'node_count_{name}', 'i4', f'instance_{name}')
+        nodecount.long_name = "count of coordinates in each instance geometry"
+        nodecount[:] = nNodesPerGeom
+
+        # - y coordinates
+        ncynode = ncfile.createVariable(f'y_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncynode.units = 'm'
+        ncynode.standard_name = 'projection_y_coordinate'
+        ncynode.axis = 'Y'
+        ncynode[:] = y
+
+        # - x coordinates
         #todo: check what standard_name should those have?
         # is it ok to have several x y coordinates?
         ncxnode = ncfile.createVariable(f'x_node_{name}', 'i4', f'node_{name}', zlib=True)
         ncxnode.units = 'm'
         ncxnode.standard_name = 'projection_x_coordinate'
-        ncynode = ncfile.createVariable(f'y_node_{name}', 'i4', f'node_{name}', zlib=True)
-        ncynode.units = 'm'
-        ncynode.standard_name = 'projection_y_coordinate'
+        ncxnode.axis = 'X'
         ncxnode[:] = x
-        ncynode[:] = y
 
-        flags = src.gml_id
-        if name == 'Clouds':
-            values = flags.apply(lambda x: int(x.split('.')[-1])+1)
-        else:
-            values = flags.apply(lambda x: int(x[-1])+1)
+        # - vector information
+        varout = ncfile.createVariable(name, 'i1', ('time', f'instance_{name}'))
+        # todo: update long_name and comment
+        #varout.long_name = f"{name} mask 10m resolution"
+        varout.grid_mapping = "UTM_projection"
+        varout.geometry = f'geometry_container_{name}'
+        varout.flag_values = values
+        varout.flag_meanings = ' '.join(flags)
+        varout[0, :] = values
 
-        return values, [i + ' : ' + str(j) for i, j in zip(flags, values)]
+        return
 
 
 if __name__ == '__main__':
