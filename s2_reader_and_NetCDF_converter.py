@@ -659,26 +659,29 @@ class Sentinel2_reader_and_NetCDF_converter:
         #    Write to nc file
         # -------------------------------
 
+        # Write shape data in specific group
+        shapes = ncfile.createGroup('masks')
+
         # Add new dimensions
-        ncfile.createDimension(f'instance_{name}', nGeometries)
-        ncfile.createDimension(f'node_{name}', sum(nNodesPerGeom))
+        shapes.createDimension(f'instance_{name}', nGeometries)
+        shapes.createDimension(f'node_{name}', sum(nNodesPerGeom))
 
         # Add new variables:
 
         # - geometry container
-        geom = ncfile.createVariable(f'geometry_container_{name}', 'i4')
+        geom = shapes.createVariable(f'geometry_container_{name}', 'i4')
         geom.geometry_type = "polygon"
         geom.node_count = f'node_count_{name}'
         geom.node_coordinates = f'x_node_{name} y_node_{name}'    # variables containing spatial
         geom.grid_mapping = "UTM_projection"
 
         # - node count
-        nodecount = ncfile.createVariable(f'node_count_{name}', 'i4', f'instance_{name}')
+        nodecount = shapes.createVariable(f'node_count_{name}', 'i4', f'instance_{name}')
         nodecount.long_name = "count of coordinates in each instance geometry"
         nodecount[:] = nNodesPerGeom
 
         # - y coordinates
-        ncynode = ncfile.createVariable(f'y_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncynode = shapes.createVariable(f'y_node_{name}', 'i4', f'node_{name}', zlib=True)
         ncynode.units = 'm'
         ncynode.standard_name = 'projection_y_coordinate'
         ncynode.axis = 'Y'
@@ -687,14 +690,14 @@ class Sentinel2_reader_and_NetCDF_converter:
         # - x coordinates
         #todo: check what standard_name should those have?
         # is it ok to have several x y coordinates?
-        ncxnode = ncfile.createVariable(f'x_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncxnode = shapes.createVariable(f'x_node_{name}', 'i4', f'node_{name}', zlib=True)
         ncxnode.units = 'm'
         ncxnode.standard_name = 'projection_x_coordinate'
         ncxnode.axis = 'X'
         ncxnode[:] = x
 
         # - vector information
-        varout = ncfile.createVariable(name, 'i1', ('time', f'instance_{name}'))
+        varout = shapes.createVariable(name, 'i1', ('time', f'instance_{name}'))
         # todo: update long_name and comment
         #varout.long_name = f"{name} mask 10m resolution"
         varout.grid_mapping = "UTM_projection"
@@ -721,11 +724,11 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'cf18_01' / product
+        outdir = workdir / 'NBS_test_data' / 'cf18_03' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
-            indir=workdir / 'NBS_test_data' / 'cf18_01',
+            indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            #indir=workdir / 'NBS_test_data' / 'cf18_01',
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
