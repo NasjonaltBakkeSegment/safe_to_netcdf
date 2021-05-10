@@ -576,6 +576,13 @@ class Sentinel2_reader_and_NetCDF_converter:
         flag_meanings = []
         for i in range(0, source_layer.GetFeatureCount()):
             feat = source_layer.GetFeature(i)
+            # Some SAFE files have their features starting at index 1 instead of 0
+            # (it's the the case for the QT_PARTIALLY_CORRECTED_PIXELS for S2 L2A products)
+            # So try and get the next feature if one is None, if still None, exit
+            if feat is None:
+                feat = source_layer.GetFeature(i+1)
+                if feat is None:
+                    return False, None, None
             name = feat.GetField('gml_id')
             source_layer.SetAttributeFilter("gml_id = \'%s\'" % name)
             if 'OPAQUE' in name:
@@ -674,7 +681,7 @@ if __name__ == '__main__':
     ##products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
     ##            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
-    products = ['S2A_MSIL2A_20210119T103351_N0214_R108_T32VNL_20210119T110828']
+    products = ['S2B_MSIL2A_20210413T105619_N0300_R094_T32VMK_20210413T125254']
 
     for product in products:
 
@@ -683,6 +690,6 @@ if __name__ == '__main__':
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
             #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
-            indir=workdir / 'NBS_test_data' / 'local_s2l2a_01',
+            indir=outdir,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
