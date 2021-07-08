@@ -356,7 +356,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add calibration layers
         ##########################################################
         # Status
-        logger.info('\nAdding calibration layers')
+        logger.info('Adding calibration layers')
         utils.memory_use(self.t0)
 
         for calibration in self.xmlCalLUTs:
@@ -380,7 +380,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add noise layers
         ##########################################################
         # Status
-        logger.info('\nAdding noise layers')
+        logger.info('Adding noise layers')
         utils.memory_use(self.t0)
 
         for polarisation in self.polarisation:
@@ -403,7 +403,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add subswath layers
         ##########################################################
         # Status
-        logger.info('\nAdding subswath layers')
+        logger.info('Adding subswath layers')
         utils.memory_use(self.t0)
 
         for polarisation in self.polarisation:
@@ -430,7 +430,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add GCP information
         ##########################################################
         # Status
-        logger.info('\nAdding GCP information')
+        logger.info('Adding GCP information')
         utils.memory_use(self.t0)
 
         gcp_units = {'slantRangeTime': 's', 'latitude': 'degrees', 'longitude': 'degrees',
@@ -467,7 +467,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add product annotation metadata
         ##########################################################
         # Status
-        logger.info('\nAdding annotation information')
+        logger.info('Adding annotation information')
         utils.memory_use(self.t0)
 
         for polarisation in self.productMetadata:
@@ -479,7 +479,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add product annotation metadata lists
         ##########################################################
         # Status
-        logger.info('\nAdding annotation list information')
+        logger.info('Adding annotation list information')
         utils.memory_use(self.t0)
 
         productMetadataListComment = {
@@ -513,7 +513,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add global attributes
         ##########################################################
         # Status
-        logger.info('\nAdding global attributes')
+        logger.info('Adding global attributes')
         utils.memory_use(self.t0)
 
         nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -538,7 +538,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         # Status
         ncout.close()
-        logger.info('\nFinished.')
+        logger.info('Finished.')
         utils.memory_use(self.t0)
 
         return out_netcdf.is_file()
