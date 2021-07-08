@@ -19,6 +19,10 @@ import numpy as np
 from scipy import interpolate
 import pathlib
 import safe_to_netcdf.utils as utils
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class Sentinel1_reader_and_NetCDF_converter:
@@ -262,7 +266,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                     counter += 1
             self.productMetadataList[polarisation][listType] = swathBoundsList
         else:
-            print("Extraction of %s is not implemented" % listType)
+            logger.error("Extraction of %s is not implemented" % listType)
 
     def getGCPs(self):
         """ Get product GCPs utilizing gdal """
@@ -280,7 +284,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         compression_level -- compression level on output NetCDF file (1-9)
         """
 
-        print("------------START CONVERSION FROM SAFE TO NETCDF-------------")
+        logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
         # Status
         utils.memory_use(self.t0)
@@ -337,7 +341,7 @@ class Sentinel1_reader_and_NetCDF_converter:
             var.grid_mapping = "crsWGS84"
             var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
             var.polarisation = "%s" % band_metadata['POLARISATION']
-            print((band.GetVirtualMemArray().shape))
+            logger.debug((band.GetVirtualMemArray().shape))
             var[0, :, :] = band.GetVirtualMemArray()
 
             band = None
@@ -352,7 +356,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add calibration layers
         ##########################################################
         # Status
-        print('\nAdding calibration layers')
+        logger.info('Adding calibration layers')
         utils.memory_use(self.t0)
 
         for calibration in self.xmlCalLUTs:
@@ -376,7 +380,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add noise layers
         ##########################################################
         # Status
-        print('\nAdding noise layers')
+        logger.info('Adding noise layers')
         utils.memory_use(self.t0)
 
         for polarisation in self.polarisation:
@@ -399,7 +403,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add subswath layers
         ##########################################################
         # Status
-        print('\nAdding subswath layers')
+        logger.info('Adding subswath layers')
         utils.memory_use(self.t0)
 
         for polarisation in self.polarisation:
@@ -426,7 +430,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add GCP information
         ##########################################################
         # Status
-        print('\nAdding GCP information')
+        logger.info('Adding GCP information')
         utils.memory_use(self.t0)
 
         gcp_units = {'slantRangeTime': 's', 'latitude': 'degrees', 'longitude': 'degrees',
@@ -463,7 +467,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add product annotation metadata
         ##########################################################
         # Status
-        print('\nAdding annotation information')
+        logger.info('Adding annotation information')
         utils.memory_use(self.t0)
 
         for polarisation in self.productMetadata:
@@ -475,7 +479,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add product annotation metadata lists
         ##########################################################
         # Status
-        print('\nAdding annotation list information')
+        logger.info('Adding annotation list information')
         utils.memory_use(self.t0)
 
         productMetadataListComment = {
@@ -509,7 +513,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         # Add global attributes
         ##########################################################
         # Status
-        print('\nAdding global attributes')
+        logger.info('Adding global attributes')
         utils.memory_use(self.t0)
 
         nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -534,7 +538,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         # Status
         ncout.close()
-        print('\nFinished.')
+        logger.info('Finished.')
         utils.memory_use(self.t0)
 
         return out_netcdf.is_file()
@@ -684,7 +688,7 @@ class Sentinel1_reader_and_NetCDF_converter:
             numLine += 1
 
         if len(lines) != len(pixels):
-            print(
+            logger.error(
                 'Error: Wrong size of arrays. legth of pixels and lines should be the same '
                 'pixels=%d lines=%d' % (
                 len(pixels), len(lines)))
@@ -816,7 +820,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         elif self.globalAttribs['MODE'] == 'IW':
             subswath_flag = {'IW1': 1, 'IW2': 2, 'IW3': 3}
         else:
-            print("Undefined mode %s" % self.globalAttribs['MODE'])
+            logger.error("Undefined mode %s" % self.globalAttribs['MODE'])
             return 0
 
         swathListRaster = np.zeros((self.ySize, self.xSize))
@@ -1002,7 +1006,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                             blockCenterTime, currentSwathStartTime,
                             currentSwathEndTime)
                         if validRangeVectorKeys == None:
-                            print('Error. No valid vector found.')
+                            logger.error('Error. No valid vector found.')
                             sys.exit([1])
 
                     noiseRangeVectorList_ = np.zeros((numberOfSamples, len(validRangeVectorKeys)))
@@ -1052,7 +1056,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 
         noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
-        print("Created noise correction matrix in: ", datetime.now() - t0_duration)
+        logger.info("Created noise correction matrix in: ", datetime.now() - t0_duration)
         return noiseCorrectionMatrix_
 
 

@@ -9,7 +9,9 @@ import resource
 from osgeo import gdal
 import subprocess as sp
 import zipfile
+import logging
 
+logger = logging.getLogger(__name__)
 
 def xml_read(xml_file):
     """
@@ -20,7 +22,7 @@ def xml_read(xml_file):
         lxml.etree._Element or None if file missing
     """
     if not pathlib.Path(xml_file).is_file():
-        print(f'Error: Can\'t find xmlfile {xml_file}')
+        logger.error(f'Error: Can\'t find xmlfile {xml_file}')
         return None
     tree = ET.parse(str(xml_file))
     root = tree.getroot()
@@ -35,10 +37,9 @@ def memory_use(start_time):
     Returns:
         N/A
     """
-    print('\nAdding subswath layers')
-    print(f"Memory usage so far: "
+    logger.debug(f"Memory usage so far: "
           f"{float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000} Gb")
-    print(dt.datetime.now() - start_time)
+    logger.debug(dt.datetime.now() - start_time)
 
 
 def seconds_from_ref(t, t_ref):
@@ -134,7 +135,7 @@ def initializer(self):
     self.src = gdal.Open(gdalFile)
     if self.src is None:
         raise
-    print((self.src))
+    logger.debug((self.src))
 
     # Set global metadata attributes from gdal
     self.globalAttribs = self.src.GetMetadata()
@@ -174,18 +175,18 @@ def uncompress(self):
     # If zip not extracted yet
     if not self.SAFE_dir.is_dir():
         self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
-        sp.run(["/usr/bin/unzip", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
+        sp.run(["/usr/bin/unzip", "-qq", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
 
     # Try and find the main XML file
     xmlFile = self.SAFE_dir / 'manifest.safe'
     if not xmlFile.is_file():
         xmlFile = self.SAFE_dir / 'MTD_MSIL1C.xml'
         if not xmlFile.is_file():
-            print(f'Main file not found. Exiting')
+            logger.error(f'Main file not found. Exiting')
             raise
         self.dterrengdata = True
 
-    print(f'Main file: {xmlFile}')
+    logger.debug(f'Main file: {xmlFile}')
     self.mainXML = xmlFile
     return True
 
