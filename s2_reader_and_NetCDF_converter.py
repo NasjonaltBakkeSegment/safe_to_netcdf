@@ -31,7 +31,11 @@ from osgeo import gdal
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import os
+import logging
 gdal.UseExceptions()
+
+
+logger = logging.getLogger(__name__)
 
 
 class Sentinel2_reader_and_NetCDF_converter:
@@ -79,7 +83,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         utils.initializer(self)
 
         # 3) Read sun and view angles
-        print('\nRead view and sun angles')
+        logger.info('Read view and sun angles')
         if not self.dterrengdata:
             currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
         else:
@@ -100,11 +104,10 @@ class Sentinel2_reader_and_NetCDF_converter:
         chunk_size -- chunk_size
         """
 
-        print("------------START CONVERSION FROM SAFE TO NETCDF-------------")
-        print("------------DEBUG-------------")
+        logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
         # Status
-        print('\nCreating NetCDF file')
+        logger.info('Creating NetCDF file')
         utils.memory_use(self.t0)
 
         # Deciding a reference band
@@ -146,7 +149,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Add projection coordinates
             ##########################################################
             # Status
-            print('\nAdding projection coordinates')
+            logger.info('Adding projection coordinates')
             utils.memory_use(self.t0)
 
             xnp, ynp = self.genLatLon(nx, ny, latlon=False)  # Assume gcps are on a regular grid
@@ -168,7 +171,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # -Document
             ##########################################################
             # Status
-            print('\nAdding frequency bands layers')
+            logger.info('Adding frequency bands layers')
             utils.memory_use(self.t0)
 
             if self.dterrengdata:
@@ -206,7 +209,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                         else:
                             band_metadata = current_band.GetMetadata()
                             varName = band_metadata['BANDNAME']
-                        print(varName)
+                        logger.debug(varName)
                         if varName.startswith('B'):
                             varout = ncout.createVariable(varName, np.uint16,
                                                           ('time', 'y', 'x'), fill_value=0,
@@ -232,7 +235,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                                 #    print(f'Metadata not found: {e}')
                             varout._Unsigned = "true"
                             # from DN to reflectance
-                            print((varName, subdataset_geotransform))
+                            logger.debug((varName, subdataset_geotransform))
                             if subdataset_geotransform[1] != 10:
                                 current_size = current_band.XSize
                                 band_measurement = scipy.ndimage.zoom(
@@ -262,7 +265,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Add vector layers
             ##########################################################
             # Status
-            print('\nAdding vector layers')
+            logger.info('Adding vector layers')
             utils.memory_use(self.t0)
 
             for gmlfile in self.xmlFiles.values():
@@ -293,7 +296,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             # Status
             if self.processing_level == 'Level-2A':
-                print('\nAdding Level-2A specific layers')
+                logger.info('Adding Level-2A specific layers')
                 utils.memory_use(self.t0)
                 gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
                 l2a_kv = {}
@@ -302,15 +305,15 @@ class Sentinel2_reader_and_NetCDF_converter:
                         if layer in k:
                             l2a_kv[k] = cst.s2_l2a_layers[k]
                         elif layer in str(v):
-                            print((layer, str(v), k))
+                            logger.debug((layer, str(v), k))
                             l2a_kv[k] = cst.s2_l2a_layers[layer]
 
                 for k, v in l2a_kv.items():
-                    print((k, v))
+                    logger.debug((k, v))
                     varName, longName = v.split(',')
                     SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
                     if SourceDS.RasterCount > 1:
-                        print("Raster data contains more than one layer")
+                        logger.info("Raster data contains more than one layer")
                     NDV = SourceDS.GetRasterBand(1).GetNoDataValue()
                     xsize = SourceDS.RasterXSize
                     ysize = SourceDS.RasterYSize
@@ -343,12 +346,12 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Add sun and view angles
             ##########################################################
             # Status
-            print('\nAdding sun and view angles')
+            logger.info('Adding sun and view angles')
             utils.memory_use(self.t0)
 
             counter = 1
             for k, v in list(self.sunAndViewAngles.items()):
-                print(("\tHandeling %i of %i" % (counter, len(self.sunAndViewAngles))))
+                logger.debug(("Handeling %i of %i" % (counter, len(self.sunAndViewAngles))))
                 angle_step = int(math.ceil(nx / float(v.shape[0])))
 
                 resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
@@ -372,7 +375,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # https://stackoverflow.com/questions/37079883/string-handling-in-python-netcdf4
             ##########################################################
             # Status
-            print('\nAdding XML files as character variables')
+            logger.info('Adding XML files as character variables')
             utils.memory_use(self.t0)
 
             for k, xmlfile in self.xmlFiles.items():
@@ -392,7 +395,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Add SAFE product structure as character values
             ##########################################################
             # Status
-            print('\nAdding SAFE product structure as character variable')
+            logger.info('Adding SAFE product structure as character variable')
             if self.SAFE_structure:
                 dim_name = str('dimension_SAFE_structure')
                 ncout.createDimension(dim_name, len(self.SAFE_structure))
@@ -404,7 +407,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Add global attributes
             ##########################################################
             # Status
-            print('\nAdding global attributes')
+            logger.info('Adding global attributes')
             utils.memory_use(self.t0)
 
             nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -436,7 +439,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.sync()
 
             # Status
-            print('\nFinished.')
+            logger.info('Finished.')
             utils.memory_use(self.t0)
 
         return out_netcdf.is_file()
@@ -446,20 +449,20 @@ class Sentinel2_reader_and_NetCDF_converter:
             string.
         """
         if not xmlfile.is_file():
-            print(('Error: Can\'t find xmlfile %s' % (xmlfile)))
+            logger.error(('Error: Can\'t find xmlfile %s' % (xmlfile)))
             return False
         try:
             parser = ET.XMLParser(recover=True)
             tree = ET.parse(str(xmlfile), parser)
             return ET.tostring(tree)
         except:
-            print(("Could not parse %s as xmlFile. Try to open regularly." % xmlfile))
+            logger.info(("Could not parse %s as xmlFile. Try to open regularly." % xmlfile))
             with open(xmlfile, 'r') as infile:
                 text = infile.read()
             if text:
                 return text
             else:
-                print(("Could not parse %s. Something wrong with file." % xmlfile))
+                logger.error(("Could not parse %s. Something wrong with file." % xmlfile))
                 return False
 
     def readSunAndViewAngles(self, xmlfile):
