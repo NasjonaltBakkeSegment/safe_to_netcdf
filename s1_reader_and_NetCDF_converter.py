@@ -1056,8 +1056,8 @@ class Sentinel1_reader_and_NetCDF_converter:
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 
         noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
-        duration = datetime.now() - t0_duration
-        logger.info(f"Created noise correction matrix in {str(duration)}")
+        delta = datetime.now() - t0_duration
+        logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
 
 
