@@ -174,8 +174,10 @@ def uncompress(self):
 
     # If zip not extracted yet
     if not self.SAFE_dir.is_dir():
+        logger.debug('Starting to unzip')
         self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
         sp.run(["/usr/bin/unzip", "-qq", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
+        logger.debug('Done unzipping')
 
     # Try and find the main XML file
     xmlFile = self.SAFE_dir / 'manifest.safe'

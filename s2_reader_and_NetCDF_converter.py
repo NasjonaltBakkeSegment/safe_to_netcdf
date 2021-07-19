@@ -127,24 +127,28 @@ class Sentinel2_reader_and_NetCDF_converter:
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
 
         with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
-            ncout.createDimension('time', 1)
+            if self.processing_level == 'Level-2A':
+                ncout.createDimension('time', 0)
+            else:
+                ncout.createDimension('time', 1)
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
 
-            nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-            lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
-            nclat.long_name = 'latitude'
-            nclat.units = 'degrees_north'
-            nclat.standard_name = 'latitude'
-            nclat[:,:]=lat
+            if not self.processing_level == 'Level-2A':
+                nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+                nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
+                lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
+                nclat.long_name = 'latitude'
+                nclat.units = 'degrees_north'
+                nclat.standard_name = 'latitude'
+                nclat[:,:]=lat
 
-            nclon.long_name = 'longitude'
-            nclon.units = 'degrees_east'
-            nclon.standard_name = 'longitude'
-            nclon[:,:]=lon
+                nclon.long_name = 'longitude'
+                nclon.units = 'degrees_east'
+                nclon.standard_name = 'longitude'
+                nclon[:,:]=lon
 
             # Add projection coordinates
             ##########################################################
@@ -191,7 +195,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                   fill_value=0, zlib=True,
                                                   complevel=compression_level)
                     varout.units = "1"
-                    varout.coordinates = "lat lon"
+                    if not self.processing_level == 'Level-2A':
+                        varout.coordinates = "lat lon"
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = 'TCI RGB from B4, B3 and B2'
                     varout._Unsigned = "true"
@@ -216,11 +221,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                           zlib=True, complevel=compression_level,
                                                           chunksizes=chunk_size)
                             varout.units = "1"
-                            varout.coordinates = "lat lon"
                             varout.grid_mapping = "UTM_projection"
                             if self.processing_level == 'Level-2A':
                                 varout.standard_name = 'surface_bidirectional_reflectance'
                             else:
+                                varout.coordinates = "lat lon"
                                 varout.standard_name = 'toa_bidirectional_reflectance'
                             varout.long_name = 'Reflectance in band %s' % varName
                             if band_metadata:
@@ -285,7 +290,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                           chunksizes=chunk_size)
                         varout.long_name = f"{layer_name} mask 10m resolution"
                         varout.comment = f"Rasterized {comment_name} information."
-                        varout.coordinates = "lat lon"
+                        if not self.processing_level == 'Level-2A':
+                            varout.coordinates = "lat lon"
                         varout.grid_mapping = "UTM_projection"
                         varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
                         varout.flag_meanings = ' '.join(
@@ -403,6 +409,39 @@ class Sentinel2_reader_and_NetCDF_converter:
                 msg_var.comment = "Original SAFE product structure xml file as character values."
                 msg_var.long_name = "Original SAFE product structure."
                 msg_var[:] = netCDF4.stringtochar(np.array([self.SAFE_structure], 'S'))
+
+            if self.processing_level == 'Level-2A':
+                # Add orbit specific data
+                ##########################################################
+                # Status
+                print('\nAdding satellite orbit specific data')
+
+                platform_id = {"Sentinel-2A":0, "Sentinel-2B":1,
+                               "Sentinel-2C":2,"Sentinel-2D":3,}
+                #orb_dir_id = {"DESCENDING":0, "":1,
+                #print(self.xmlFiles)
+
+                #if self.xmlFiles['manifest']:
+                #tree = ET.parse(self.SAFE_dir+'/manifest.safe')
+                tree = ET.parse(str(self.SAFE_dir/'manifest.safe'))
+                root = tree.getroot()
+                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',namespaces=root.nsmap).text
+
+                dim_orb = ncout.createDimension('orbit_dim',3)
+                nc_orb = ncout.createVariable('orbit_data',np.int32,('time','orbit_dim'))
+                rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
+                orb_nb = root.find('.//safe:orbitNumber',namespaces=root.nsmap).text
+                orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
+                platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
+
+                nc_orb.relativeOrbitNumber = rel_orb_nb
+                nc_orb.orbitNumber = orb_nb
+                nc_orb.orbitDirection = orb_dir
+                nc_orb.platform = platform
+                nc_orb.description = "Values structured as [relative orbit number, orbit number, platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
+
+                nc_orb[0,:] = [int(rel_orb_nb),int(orb_nb),platform_id[platform]]
+
 
             # Add global attributes
             ##########################################################
