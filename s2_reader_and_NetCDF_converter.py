@@ -414,7 +414,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 # Add orbit specific data
                 ##########################################################
                 # Status
-                print('\nAdding satellite orbit specific data')
+                logger.info('Adding satellite orbit specific data')
 
                 platform_id = {"Sentinel-2A":0, "Sentinel-2B":1,
                                "Sentinel-2C":2,"Sentinel-2D":3,}
