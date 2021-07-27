@@ -23,18 +23,17 @@ from datetime import datetime
 import lxml.etree as ET
 import netCDF4
 import numpy as np
-import osgeo.ogr as ogr
-import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
-from osgeo import gdal
 import geopandas as geopd
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import os
 import logging
-gdal.UseExceptions()
+import satpy
 
+import warnings
+warnings.filterwarnings("ignore")
 
 logger = logging.getLogger(__name__)
 
@@ -83,17 +82,19 @@ class Sentinel2_reader_and_NetCDF_converter:
         # 2) Set some of the global __init__ variables
         utils.initializer(self)
 
+        # Read SAFE data
+        my_files = satpy.find_files_and_readers(base_dir=self.SAFE_dir.parent, reader='msi_safe')
+        self.scn = satpy.Scene(reader='msi_safe', filenames=my_files)
+
         # 3) Read sun and view angles
-        logger.info('Read view and sun angles')
-        if not self.dterrengdata:
-            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
-        else:
-            currXml = self.xmlFiles['MTD_TL']
-        self.readSunAndViewAngles(currXml)
+        self.scn.load(['solar_azimuth_angle', 'solar_zenith_angle'])
+        self.sunAndViewAngles['sun_zenith'] = self.scn.get('solar_zenith_angle')
+        self.sunAndViewAngles['sun_azimuth'] = self.scn.get('solar_azimuth_angle')
 
         # 5) Retrieve SAFE product structure
+        #todo: use the namelist
         # much difficulty afterwards to be able to save this to netCDF
-        ##self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
+        #self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
         self.SAFE_structure = self.list_product_structure()
 
     def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 32, 32)):
@@ -115,14 +116,19 @@ class Sentinel2_reader_and_NetCDF_converter:
         #todo dterreng warning coming from here?
         # yes -> self.src.GetSubDatasets() ok but the gdal.Open does not work
         # add break? how to remove warning from dterr?
-        for k, v in self.src.GetSubDatasets():
-            if v.find('10m') > 0:
-                self.reference_band = gdal.Open(k)
+        ##for k, v in self.src.GetSubDatasets():
+        ##    if v.find('10m') > 0:
+        ##        self.reference_band = gdal.Open(k)
 
-        nx = self.reference_band.RasterXSize  # number of pixels for 10m spatial resolution
-        # frequency bands
-        ny = self.reference_band.RasterYSize  # number of pixels for 10m spatial resolution
-        # frequency bands
+        # Read reflectance data
+        self.scn.load(['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08', 'B09', 'B10', 'B11', 'B12', 'B8A'])
+
+        # Resample all data to highest resolution available
+        # So in my example, all datasets available in scn will now have the highest resolution available, so 10m
+        resampled_scn = self.scn.resample(resampler='native')
+
+        # number of pixels for 10m spatial resolution
+        nx, ny = resampled_scn['B01'].shape
 
         # output filename
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
@@ -131,7 +137,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncout.createDimension('time', 0)
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
-            utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
+            utils.create_time(ncout, resampled_scn.attrs['start_time'])
 
             # Add projection coordinates
             ##########################################################
@@ -139,17 +145,17 @@ class Sentinel2_reader_and_NetCDF_converter:
             logger.info('Adding projection coordinates')
             utils.memory_use(self.t0)
 
-            xnp, ynp = self.genLatLon(nx, ny, latlon=False)  # Assume gcps are on a regular grid
+            #xnp, ynp = self.genLatLon(nx, ny, latlon=False)  # Assume gcps are on a regular grid
 
             ncx = ncout.createVariable('x', 'i4', 'x', zlib=True)
             ncx.units = 'm'
             ncx.standard_name = 'projection_x_coordinate'
-            ncx[:] = xnp
+            ncx[:] = resampled_scn['B01']['x']
 
             ncy = ncout.createVariable('y', 'i4', 'y', zlib=True)
             ncy.units = 'm'
             ncy.standard_name = 'projection_y_coordinate'
-            ncy[:] = ynp
+            ncy[:] = resampled_scn['B01']['y']
 
             # Add raw measurement layers
             # Currently adding TCI
@@ -161,89 +167,72 @@ class Sentinel2_reader_and_NetCDF_converter:
             logger.info('Adding frequency bands layers')
             utils.memory_use(self.t0)
 
-            if self.dterrengdata:
-                # For DTERR data, gdal fails to properly do the src.GetSubDatasets()
-                # so manually read the list of images created beforehand
-                images = [[str(i), i.stem] for i in self.image_list_dterreng]
-            else:
-                images = self.src.GetSubDatasets()
-            for k, v in images:
-                subdataset = gdal.Open(k)
-                subdataset_geotransform = subdataset.GetGeoTransform()
+            for img in resampled_scn:
+                # todo: how to get TCI?
                 # True color image (8 bit true color image)
-                if ("True color image" in v) or ('TCI' in v):
-                    ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                    varout = ncout.createVariable('TCI', 'u1',
-                                                  ('time', 'dimension_rgb', 'y', 'x'),
-                                                  fill_value=0, zlib=True,
-                                                  complevel=compression_level,
-                                                  chunksizes=(1,) + chunk_size)
+                ##If ("True color image" in v) or ('TCI' in v):
+                ##    ncout.createDimension('dimension_rgb', subdataset.RasterCount)
+                ##    varout = ncout.createVariable('TCI', 'u1',
+                ##                                  ('time', 'dimension_rgb', 'y', 'x'),
+                ##                                  fill_value=0, zlib=True,
+                ##                                  complevel=compression_level,
+                ##                                  chunksizes=(1,) + chunk_size)
+                ##    varout.units = "1"
+                ##    varout.grid_mapping = "UTM_projection"
+                ##    varout.long_name = 'TCI RGB from B4, B3 and B2'
+                ##    varout._Unsigned = "true"
+                ##    for i in range(1, subdataset.RasterCount + 1):
+                ##        current_band = subdataset.GetRasterBand(i)
+                ##        band_measurement = current_band.GetVirtualMemArray()
+                ##        varout[0, i - 1, :, :] = band_measurement
+                # Reflectance data for each band
+                varName = img.attrs['name']
+                if varName.startswith('B'):
+                    varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
+                                                      zlib=True, complevel=compression_level, chunksizes=chunk_size)
                     varout.units = "1"
                     varout.grid_mapping = "UTM_projection"
-                    varout.long_name = 'TCI RGB from B4, B3 and B2'
+                    if self.processing_level == 'Level-2A':
+                        varout.standard_name = 'surface_bidirectional_reflectance'
+                    else:
+                        varout.standard_name = 'toa_bidirectional_reflectance'
+                    varout.long_name = 'Reflectance in band %s' % varName
+                    varout.wavelength = img.attrs['wavelength']
+                    # todo: how to get these info?
+                    ##varout.bandwidth = band_metadata['BANDWIDTH']
+                    ##varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
+                    ##varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
+                    ##varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
+                    ##varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
                     varout._Unsigned = "true"
-                    for i in range(1, subdataset.RasterCount + 1):
-                        current_band = subdataset.GetRasterBand(i)
-                        band_measurement = current_band.GetVirtualMemArray()
-                        varout[0, i - 1, :, :] = band_measurement
-                # Reflectance data for each band
-                else:
-                    for i in range(1, subdataset.RasterCount + 1):
-                        current_band = subdataset.GetRasterBand(i)
-                        if self.dterrengdata:
-                            band_metadata = None
-                            varName = cst.s2_bands_aliases[v[-3::]]
-                        else:
-                            band_metadata = current_band.GetMetadata()
-                            varName = band_metadata['BANDNAME']
-                        if varName.startswith('B'):
-                            varout = ncout.createVariable(varName, np.uint16,
-                                                          ('time', 'y', 'x'), fill_value=0,
-                                                          zlib=True, complevel=compression_level,
-                                                          chunksizes=chunk_size)
-                            varout.units = "1"
-                            varout.grid_mapping = "UTM_projection"
-                            if self.processing_level == 'Level-2A':
-                                varout.standard_name = 'surface_bidirectional_reflectance'
-                            else:
-                                varout.standard_name = 'toa_bidirectional_reflectance'
-                            varout.long_name = 'Reflectance in band %s' % varName
-                            if band_metadata:
-                                varout.bandwidth = band_metadata['BANDWIDTH']
-                                varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
-                                varout.wavelength = band_metadata['WAVELENGTH']
-                                varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
-                                varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
-                                varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                            varout._Unsigned = "true"
-                            # from DN to reflectance
-                            logger.debug((varName, subdataset_geotransform))
-                            if subdataset_geotransform[1] != 10:
-                                current_size = current_band.XSize
-                                band_measurement = scipy.ndimage.zoom(
-                                    input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
-                                    order=0)
-                            else:
-                                band_measurement = current_band.GetVirtualMemArray()
-                            varout[0, :, :] = band_measurement
+                    # from DN to reflectance
+                    logger.debug(varName)
+                    ##if subdataset_geotransform[1] != 10:
+                    ##    current_size = current_band.XSize
+                    ##    band_measurement = scipy.ndimage.zoom(
+                    ##        input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
+                    ##        order=0)
+                    ##else:
+                    ##    band_measurement = current_band.GetVirtualMemArray()
+                    varout[0, :, :] = img.values
 
-            # set grid mapping
-            ##########################################################
-            source_crs = osr.SpatialReference()
-            source_crs.ImportFromWkt(self.reference_band.GetProjection())
+            # Grid mapping
+            # to do: how much of this do we actually want?
+            ##source_crs = osr.SpatialReference()
+            ##source_crs.ImportFromWkt(self.reference_band.GetProjection())
             nc_crs = ncout.createVariable('UTM_projection', np.int32, ('time'))
-            nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
-            nc_crs.proj4_string = source_crs.ExportToProj4()
-            nc_crs.crs_wkt = source_crs.ExportToWkt()
-            nc_crs.semi_major_axis = source_crs.GetSemiMajor()
-            nc_crs.scale_factor_at_central_meridian = source_crs.GetProjParm('scale_factor')
-            nc_crs.longitude_of_central_meridian = source_crs.GetProjParm('central_meridian')
-            nc_crs.grid_mapping_name = source_crs.GetAttrValue('PROJECTION').lower()
-            nc_crs.semi_minor_axis = source_crs.GetSemiMinor()
-            nc_crs.false_easting = source_crs.GetProjParm('false_easting')
-            nc_crs.false_northing = source_crs.GetProjParm('false_northing')
-            nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
-            nc_crs.crs_wkt = self.reference_band.GetProjection()
+            ##nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
+            nc_crs.proj4_string = img.attrs['area'].proj4_string
+            nc_crs.crs_wkt = img.attrs['area'].crs_wkt
+            ##nc_crs.crs_wkt = source_crs.ExportToWkt()
+            ##nc_crs.semi_major_axis = source_crs.GetSemiMajor()
+            ##nc_crs.scale_factor_at_central_meridian = source_crs.GetProjParm('scale_factor')
+            ##nc_crs.longitude_of_central_meridian = source_crs.GetProjParm('central_meridian')
+            ##nc_crs.grid_mapping_name = source_crs.GetAttrValue('PROJECTION').lower()
+            ##nc_crs.semi_minor_axis = source_crs.GetSemiMinor()
+            ##nc_crs.false_easting = source_crs.GetProjParm('false_easting')
+            ##nc_crs.false_northing = source_crs.GetProjParm('false_northing')
+            ##nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
 
             # Add vector layers
             ##########################################################
@@ -255,80 +244,82 @@ class Sentinel2_reader_and_NetCDF_converter:
                 if gmlfile and gmlfile.suffix == '.gml':
                     self.write_vector(gmlfile, ncout)
 
-            # Add Level-2A layers
-            ##########################################################
-            # Status
-            if self.processing_level == 'Level-2A':
-                logger.info('Adding Level-2A specific layers')
-                utils.memory_use(self.t0)
-                gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
-                l2a_kv = {}
-                for layer in cst.s2_l2a_layers:
-                    for k, v in self.imageFiles.items():
-                        if layer in k:
-                            l2a_kv[k] = cst.s2_l2a_layers[k]
-                        elif layer in str(v):
-                            logger.debug((layer, str(v), k))
-                            l2a_kv[k] = cst.s2_l2a_layers[layer]
+            ### Add Level-2A layers
+            ############################################################
+            ### Status
+            ##if self.processing_level == 'Level-2A':
+            ##    logger.info('Adding Level-2A specific layers')
+            ##    utils.memory_use(self.t0)
+            ##    gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
+            ##    l2a_kv = {}
+            ##    for layer in cst.s2_l2a_layers:
+            ##        for k, v in self.imageFiles.items():
+            ##            if layer in k:
+            ##                l2a_kv[k] = cst.s2_l2a_layers[k]
+            ##            elif layer in str(v):
+            ##                logger.debug((layer, str(v), k))
+            ##                l2a_kv[k] = cst.s2_l2a_layers[layer]
 
-                for k, v in l2a_kv.items():
-                    logger.debug((k, v))
-                    varName, longName = v.split(',')
-                    SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
-                    if SourceDS.RasterCount > 1:
-                        logger.info("Raster data contains more than one layer")
-                    NDV = SourceDS.GetRasterBand(1).GetNoDataValue()
-                    xsize = SourceDS.RasterXSize
-                    ysize = SourceDS.RasterYSize
-                    GeoT = SourceDS.GetGeoTransform()
-                    DataType = gdal_nc_data_types[
-                        gdal.GetDataTypeName(SourceDS.GetRasterBand(1).DataType)]
-                    varout = ncout.createVariable(varName, DataType,
-                                                  ('time', 'y', 'x'), fill_value=0, zlib=True,
-                                                  complevel=compression_level,
-                                                  chunksizes=chunk_size)
-                    varout.grid_mapping = "UTM_projection"
-                    varout.long_name = longName
-                    if varName == "SCL":
-                        varout.flag_values = np.array(list(
-                            cst.s2_scene_classification_flags.values()),
-                                                      dtype=np.int8)
-                        varout.flag_meanings = ' '.join(
-                            [key for key in list(cst.s2_scene_classification_flags.keys())])
+            ##    for k, v in l2a_kv.items():
+            ##        logger.debug((k, v))
+            ##        varName, longName = v.split(',')
+            ##        SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
+            ##        if SourceDS.RasterCount > 1:
+            ##            logger.info("Raster data contains more than one layer")
+            ##        NDV = SourceDS.GetRasterBand(1).GetNoDataValue()
+            ##        xsize = SourceDS.RasterXSize
+            ##        ysize = SourceDS.RasterYSize
+            ##        GeoT = SourceDS.GetGeoTransform()
+            ##        DataType = gdal_nc_data_types[
+            ##            gdal.GetDataTypeName(SourceDS.GetRasterBand(1).DataType)]
+            ##        varout = ncout.createVariable(varName, DataType,
+            ##                                      ('time', 'y', 'x'), fill_value=0, zlib=True,
+            ##                                      complevel=compression_level,
+            ##                                      chunksizes=chunk_size)
+            ##        varout.grid_mapping = "UTM_projection"
+            ##        varout.long_name = longName
+            ##        if varName == "SCL":
+            ##            varout.flag_values = np.array(list(
+            ##                cst.s2_scene_classification_flags.values()),
+            ##                                          dtype=np.int8)
+            ##            varout.flag_meanings = ' '.join(
+            ##                [key for key in list(cst.s2_scene_classification_flags.keys())])
 
-                    if GeoT[1] != 10:
-                        raster_data = scipy.ndimage.zoom(input=SourceDS.GetVirtualMemArray(),
-                                                         zoom=nx / xsize, order=0)
-                    else:
-                        raster_data = SourceDS.GetVirtualMemArray()
-                    varout[0, :] = raster_data
+            ##        if GeoT[1] != 10:
+            ##            raster_data = scipy.ndimage.zoom(input=SourceDS.GetVirtualMemArray(),
+            ##                                             zoom=nx / xsize, order=0)
+            ##        else:
+            ##            raster_data = SourceDS.GetVirtualMemArray()
+            ##        varout[0, :] = raster_data
 
             # Add sun and view angles
             ##########################################################
             # Status
+            # todo: view angle = satellite angle?
+            # todo same view and sun angle for bands with same resolution?
             logger.info('Adding sun and view angles')
             utils.memory_use(self.t0)
 
-            counter = 1
-            for k, v in list(self.sunAndViewAngles.items()):
-                logger.debug(("Handeling %i of %i" % (counter, len(self.sunAndViewAngles))))
-                angle_step = int(math.ceil(nx / float(v.shape[0])))
+            ##counter = 1
+            ##for k, v in list(self.sunAndViewAngles.items()):
+            ##    logger.debug(("Handeling %i of %i" % (counter, len(self.sunAndViewAngles))))
+            ##    angle_step = int(math.ceil(nx / float(v.shape[0])))
 
-                resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
-                                                        type=np.float32)
+            ##    resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
+            ##                                            type=np.float32)
 
-                varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'),
-                                              fill_value=netCDF4.default_fillvals['f4'], zlib=True,
-                                              chunksizes=chunk_size)
-                varout.units = 'degree'
-                if 'sun' in k:
-                    varout.long_name = 'Solar %s angle' % k.split('_')[-1]
-                else:
-                    varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
-                varout.grid_mapping = "UTM_projection"
-                varout.comment = '1 to 1 with original 22x22 resolution'
-                varout[0, :, :] = resampled_angles
-                counter += 1
+            ##    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'),
+            ##                                  fill_value=netCDF4.default_fillvals['f4'], zlib=True,
+            ##                                  chunksizes=chunk_size)
+            ##    varout.units = 'degree'
+            ##    if 'sun' in k:
+            ##        varout.long_name = 'Solar %s angle' % k.split('_')[-1]
+            ##    else:
+            ##        varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
+            ##    varout.grid_mapping = "UTM_projection"
+            ##    varout.comment = '1 to 1 with original 22x22 resolution'
+            ##    varout[0, :, :] = resampled_angles
+            ##    counter += 1
 
             # Add xml files as character values see:
             # https://stackoverflow.com/questions/37079883/string-handling-in-python-netcdf4
@@ -363,59 +354,59 @@ class Sentinel2_reader_and_NetCDF_converter:
                 msg_var.long_name = "Original SAFE product structure."
                 msg_var[:] = netCDF4.stringtochar(np.array([self.SAFE_structure], 'S'))
 
-            # Add orbit specific data
-            ##########################################################
-            # Status
-            logger.info('Adding satellite orbit specific data')
-            utils.memory_use(self.t0)
+            ### Add orbit specific data
+            ############################################################
+            ### Status
+            ##logger.info('Adding satellite orbit specific data')
+            ##utils.memory_use(self.t0)
 
-            root = utils.xml_read(self.mainXML)
-            if not self.dterrengdata:
-                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
-                                                              namespaces=root.nsmap).text
-            else:
-                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+            ##root = utils.xml_read(self.mainXML)
+            ##if not self.dterrengdata:
+            ##    self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
+            ##                                                  namespaces=root.nsmap).text
+            ##else:
+            ##    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
 
-            ncout.createDimension('orbit_dim', 3)
-            nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
-            rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
-            orb_nb = self.globalAttribs['orbitNumber']
-            orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
-            platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
+            ##ncout.createDimension('orbit_dim', 3)
+            ##nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
+            ##rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
+            ##orb_nb = self.globalAttribs['orbitNumber']
+            ##orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
+            ##platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
 
-            nc_orb.relativeOrbitNumber = rel_orb_nb
-            nc_orb.orbitNumber = orb_nb
-            nc_orb.orbitDirection = orb_dir
-            nc_orb.platform = platform
-            nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
-                                 "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
+            ##nc_orb.relativeOrbitNumber = rel_orb_nb
+            ##nc_orb.orbitNumber = orb_nb
+            ##nc_orb.orbitDirection = orb_dir
+            ##nc_orb.platform = platform
+            ##nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
+            ##                     "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
 
-            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
+            ##nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
 
-            # Add global attributes
-            ##########################################################
-            # Status
-            logger.info('Adding global attributes')
-            utils.memory_use(self.t0)
+            ### Add global attributes
+            ############################################################
+            ### Status
+            ##logger.info('Adding global attributes')
+            ##utils.memory_use(self.t0)
 
-            nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
-            ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
-            ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-            ncout.file_creation_date = nowstr
+            ##nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
+            ##ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
+            ##ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
+            ##ncout.file_creation_date = nowstr
 
-            self.globalAttribs[
-                'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
-                self.processing_level)
-            self.globalAttribs[
-                'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
-            self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-            self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
-            self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-            self.globalAttribs['source'] = "surface observation"
-            self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
-                'DATATAKE_1_SENSING_ORBIT_NUMBER')
-            self.globalAttribs['Conventions'] = "CF-1.8"
-            ncout.setncatts(self.globalAttribs)
+            ##self.globalAttribs[
+            ##    'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
+            ##    self.processing_level)
+            ##self.globalAttribs[
+            ##    'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
+            ##self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
+            ##self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
+            ##self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
+            ##self.globalAttribs['source'] = "surface observation"
+            ##self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
+            ##    'DATATAKE_1_SENSING_ORBIT_NUMBER')
+            ##self.globalAttribs['Conventions'] = "CF-1.8"
+            ##ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
             # Status
@@ -450,39 +441,40 @@ class Sentinel2_reader_and_NetCDF_converter:
             annotation files.
         """
 
-        root = utils.xml_read(xmlfile)
+        ##root = utils.xml_read(xmlfile)
 
-        angles_view_list = root.findall('.//Tile_Angles')[0]
-        angle_step = float(root.findall('.//COL_STEP')[0].text)  # m
-        col_step = float(root.findall('.//ROW_STEP')[0].text)  # m
-        nx = int(root.xpath(str(
-            '//n1:{}_Tile_ID/n1:Geometric_Info/Tile_Geocoding/Size[@resolution=10]/NROWS'.format(
-                self.processing_level)), namespaces=root.nsmap)[0].text)  # nb of rows
-        ny = int(root.xpath(str(
-            '//n1:{}_Tile_ID/n1:Geometric_Info/Tile_Geocoding/Size[@resolution=10]/NCOLS'.format(
-                self.processing_level)), namespaces=root.nsmap)[0].text)  # nb of columns
-        spatial_resolution = 10
+        ##angles_view_list = root.findall('.//Tile_Angles')[0]
+        ##angle_step = float(root.findall('.//COL_STEP')[0].text)  # m
+        ##col_step = float(root.findall('.//ROW_STEP')[0].text)  # m
+        ##nx = int(root.xpath(str(
+        ##    '//n1:{}_Tile_ID/n1:Geometric_Info/Tile_Geocoding/Size[@resolution=10]/NROWS'.format(
+        ##        self.processing_level)), namespaces=root.nsmap)[0].text)  # nb of rows
+        ##ny = int(root.xpath(str(
+        ##    '//n1:{}_Tile_ID/n1:Geometric_Info/Tile_Geocoding/Size[@resolution=10]/NCOLS'.format(
+        ##        self.processing_level)), namespaces=root.nsmap)[0].text)  # nb of columns
+        ##spatial_resolution = 10
 
-        angle_len = int(math.ceil(nx * spatial_resolution / angle_step))
-        sun_zenith = np.zeros((angle_len, angle_len), dtype=np.float32)
-        sun_azimuth = np.zeros((angle_len, angle_len), dtype=np.float32)
-        angle_step = int(math.ceil(nx / float(angle_len)))
-        incidence_angles_list = angles_view_list.findall('Viewing_Incidence_Angles_Grids')
+        ##angle_len = int(math.ceil(nx * spatial_resolution / angle_step))
+        ##sun_zenith = np.zeros((angle_len, angle_len), dtype=np.float32)
+        ##sun_azimuth = np.zeros((angle_len, angle_len), dtype=np.float32)
+        ##angle_step = int(math.ceil(nx / float(angle_len)))
+        ##incidence_angles_list = angles_view_list.findall('Viewing_Incidence_Angles_Grids')
 
-        # Sun angles
-        for angle in angles_view_list.find('Sun_Angles_Grid'):
-            # print('\t',angle.tag)
-            counter_entry = 0
-            values_list = angle.find('Values_List')
-            for value_entry in values_list[0:-1]:
-                if angle.tag == 'Zenith':
-                    tmp_sun = np.array([float(i) for i in value_entry.text.split()])[0:-1]
-                    sun_zenith[counter_entry, :] = tmp_sun
-                    counter_entry += 1
-                if angle.tag == 'Azimuth':
-                    tmp_sun = np.array([float(i) for i in value_entry.text.split()])[0:-1]
-                    sun_azimuth[counter_entry, :] = tmp_sun
-                    counter_entry += 1
+        ### Sun angles
+        ##for angle in angles_view_list.find('Sun_Angles_Grid'):
+        ##    # print('\t',angle.tag)
+        ##    counter_entry = 0
+        ##    values_list = angle.find('Values_List')
+        ##    for value_entry in values_list[0:-1]:
+        ##        if angle.tag == 'Zenith':
+        ##            tmp_sun = np.array([float(i) for i in value_entry.text.split()])[0:-1]
+        ##            sun_zenith[counter_entry, :] = tmp_sun
+        ##            counter_entry += 1
+        ##        if angle.tag == 'Azimuth':
+        ##            tmp_sun = np.array([float(i) for i in value_entry.text.split()])[0:-1]
+        ##            sun_azimuth[counter_entry, :] = tmp_sun
+        ##            counter_entry += 1
+
 
         self.sunAndViewAngles['sun_zenith'] = sun_zenith
         self.sunAndViewAngles['sun_azimuth'] = sun_azimuth
@@ -726,7 +718,7 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'cf18_03' / product
+        outdir = workdir / 'NBS_test_data' / 'satpy_02' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,

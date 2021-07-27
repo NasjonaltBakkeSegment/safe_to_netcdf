@@ -51,10 +51,13 @@ def seconds_from_ref(t, t_ref):
     Returns:
         integer
     """
-    try:
-        mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f')
-    except ValueError:
-        mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%fZ')
+    if isinstance(t, dt.datetime):
+        mytime = t
+    else:
+        try:
+            mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f')
+        except ValueError:
+            mytime = dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%fZ')
     return int((mytime - t_ref).total_seconds())
 
 
@@ -126,17 +129,18 @@ def initializer(self):
                     self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
 
     # Set gdal object
-    if sat == 'S2' and not self.dterrengdata:
-        gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
-    else:
-        gdalFile = str(self.mainXML)
-    self.src = gdal.Open(gdalFile)
-    if self.src is None:
-        raise
-    logger.debug((self.src))
+    ##if sat == 'S2' and not self.dterrengdata:
+    ##    gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
+    ##else:
+    ##    gdalFile = str(self.mainXML)
+    ##self.src = gdal.Open(gdalFile)
+    ##if self.src is None:
+    ##    raise
+    ##logger.debug((self.src))
 
     # Set global metadata attributes from gdal
-    self.globalAttribs = self.src.GetMetadata()
+    # todo: find a way to get these global attributes
+    #self.globalAttribs = self.src.GetMetadata()
 
     if sat == 'S1':
         # Set raster size parameters
