@@ -188,6 +188,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                 # Reflectance data for each band
                 varName = img.attrs['name']
                 if varName.startswith('B'):
+
+                    # Temporary - for easier comparison with production
+                    if len(varName) == 2:
+                        varName='B0'+varName[-1]
+
                     varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
                                                       zlib=True, complevel=compression_level, chunksizes=chunk_size)
                     varout.units = "1"
@@ -240,9 +245,10 @@ class Sentinel2_reader_and_NetCDF_converter:
             logger.info('Adding vector layers')
             utils.memory_use(self.t0)
 
-            for gmlfile in self.xmlFiles.values():
-                if gmlfile and gmlfile.suffix == '.gml':
-                    self.write_vector(gmlfile, ncout)
+            # works - but keep out for now
+            ##for gmlfile in self.xmlFiles.values():
+            ##    if gmlfile and gmlfile.suffix == '.gml':
+            ##        self.write_vector(gmlfile, ncout)
 
             ### Add Level-2A layers
             ############################################################
@@ -360,12 +366,11 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##logger.info('Adding satellite orbit specific data')
             ##utils.memory_use(self.t0)
 
-            ##root = utils.xml_read(self.mainXML)
-            ##if not self.dterrengdata:
-            ##    self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
-            ##                                                  namespaces=root.nsmap).text
-            ##else:
-            ##    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+            root = utils.xml_read(self.mainXML)
+            if not self.dterrengdata:
+                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber', namespaces=root.nsmap).text
+            else:
+                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
 
             ##ncout.createDimension('orbit_dim', 3)
             ##nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
@@ -389,23 +394,19 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##logger.info('Adding global attributes')
             ##utils.memory_use(self.t0)
 
-            ##nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
-            ##ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
-            ##ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-            ##ncout.file_creation_date = nowstr
+            nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
+            ncout.title = f'Sentinel-2 {self.processing_level} data'
+            ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
+            ncout.file_creation_date = nowstr
 
-            ##self.globalAttribs[
-            ##    'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
-            ##    self.processing_level)
-            ##self.globalAttribs[
-            ##    'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
-            ##self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-            ##self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
-            ##self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-            ##self.globalAttribs['source'] = "surface observation"
-            ##self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
-            ##    'DATATAKE_1_SENSING_ORBIT_NUMBER')
-            ##self.globalAttribs['Conventions'] = "CF-1.8"
+            self.globalAttribs['summary'] = f'Sentinel-2 Multi-Spectral Instrument {self.processing_level} product.'
+            self.globalAttribs['keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
+            self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
+            self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
+            self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
+            self.globalAttribs['source'] = "surface observation"
+            #self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop('DATATAKE_1_SENSING_ORBIT_NUMBER')
+            self.globalAttribs['Conventions'] = "CF-1.8"
             ##ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
