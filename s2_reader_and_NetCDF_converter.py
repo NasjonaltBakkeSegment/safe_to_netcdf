@@ -137,9 +137,9 @@ class Sentinel2_reader_and_NetCDF_converter:
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
 
             if not self.processing_level == 'Level-2A':
-                nclat = ncout.createVariable('lat','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-                nclon = ncout.createVariable('lon','f4',('y','x',),zlib=True,complevel=compression_level, chunksizes=chunk_size[1:])
-                lat,lon = self.genLatLon(nx,ny) #Assume gcps are on a regular grid
+                nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True, complevel=compression_level)
+                nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True, complevel=compression_level)
+                lat,lon = self.genLatLon(nx, ny) #Assume gcps are on a regular grid
                 nclat.long_name = 'latitude'
                 nclat.units = 'degrees_north'
                 nclat.standard_name = 'latitude'
@@ -158,12 +158,12 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             xnp, ynp = self.genLatLon(nx, ny, latlon=False)  # Assume gcps are on a regular grid
 
-            ncx = ncout.createVariable('x', 'i4', 'x', zlib=True)
+            ncx = ncout.createVariable('x', 'i4', 'x', zlib=True, complevel=compression_level)
             ncx.units = 'm'
             ncx.standard_name = 'projection_x_coordinate'
             ncx[:] = xnp
 
-            ncy = ncout.createVariable('y', 'i4', 'y', zlib=True)
+            ncy = ncout.createVariable('y', 'i4', 'y', zlib=True, complevel=compression_level)
             ncy.units = 'm'
             ncy.standard_name = 'projection_y_coordinate'
             ncy[:] = ynp
@@ -190,10 +190,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                 # True color image (8 bit true color image)
                 if ("True color image" in v) or ('TCI' in v):
                     ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                    varout = ncout.createVariable('TCI', 'u1',
-                                                  ('dimension_rgb', 'y', 'x'),
-                                                  fill_value=0, zlib=True,
-                                                  complevel=compression_level)
+                    varout = ncout.createVariable('TCI', 'u1', ('dimension_rgb', 'y', 'x'),
+                                                  fill_value=0, zlib=True, complevel=compression_level)
                     varout.units = "1"
                     if not self.processing_level == 'Level-2A':
                         varout.coordinates = "lat lon"
@@ -216,10 +214,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                             varName = band_metadata['BANDNAME']
                         logger.debug(varName)
                         if varName.startswith('B'):
-                            varout = ncout.createVariable(varName, np.uint16,
-                                                          ('time', 'y', 'x'), fill_value=0,
-                                                          zlib=True, complevel=compression_level,
-                                                          chunksizes=chunk_size)
+                            varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
+                                                          zlib=True, complevel=compression_level)
                             varout.units = "1"
                             varout.grid_mapping = "UTM_projection"
                             if self.processing_level == 'Level-2A':
@@ -285,9 +281,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                         else:
                             layer_name = layer
                             comment_name = 'vector'
-                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'),
-                                                          fill_value=-1, zlib=True,
-                                                          chunksizes=chunk_size)
+                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'), fill_value=-1,
+                                                      zlib=True, complevel=compression_level)
                         varout.long_name = f"{layer_name} mask 10m resolution"
                         varout.comment = f"Rasterized {comment_name} information."
                         if not self.processing_level == 'Level-2A':
@@ -328,10 +323,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                         gdal.GetDataTypeName(SourceDS.GetRasterBand(1).DataType)]
                     # print(NDV, xsize, ysize, GeoT, DataType)
 
-                    varout = ncout.createVariable(varName, DataType,
-                                                  ('time', 'y', 'x'), fill_value=0, zlib=True,
-                                                  complevel=compression_level,
-                                                  chunksizes=chunk_size)
+                    varout = ncout.createVariable(varName, DataType, ('time', 'y', 'x'), fill_value=0,
+                                                  zlib=True, complevel=compression_level, chunksizes=chunk_size)
                     # varout.coordinates = "lat lon" ;
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = longName
@@ -363,9 +356,8 @@ class Sentinel2_reader_and_NetCDF_converter:
                 resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
                                                         type=np.float32)
 
-                varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'),
-                                              fill_value=netCDF4.default_fillvals['f4'], zlib=True,
-                                              chunksizes=chunk_size)
+                varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
+                                              zlib=True, complevel=compression_level)
                 varout.units = 'degree'
                 if 'sun' in k:
                     varout.long_name = 'Solar %s angle' % k.split('_')[-1]
@@ -716,22 +708,24 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
     products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
     #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
+    #products = ['S2B_MSIL2A_20210413T105619_N0300_R094_T32VMK_20210413T125254']
 
     ##products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
     ##            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
-    products = ['S2B_MSIL2A_20210413T105619_N0300_R094_T32VMK_20210413T125254']
+    workdir1 = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_01')
+    workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
+    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'local_s2l2a_01' / product
+        outdir = workdir / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
-            indir=outdir,
+            indir=workdir1 / product,
+            #indir=outdir,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
