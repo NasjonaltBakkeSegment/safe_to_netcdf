@@ -214,7 +214,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                             varName = band_metadata['BANDNAME']
                         logger.debug(varName)
                         if varName.startswith('B'):
-                            varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
+                            if self.processing_level == 'Level-2A':
+                                varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
+                                                              zlib=True, complevel=compression_level, chunksizes=chunk_size)
+                            else:
+                                varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
                                                           zlib=True, complevel=compression_level)
                             varout.units = "1"
                             varout.grid_mapping = "UTM_projection"
@@ -356,8 +360,12 @@ class Sentinel2_reader_and_NetCDF_converter:
                 resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
                                                         type=np.float32)
 
-                varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
-                                              zlib=True, complevel=compression_level)
+                if self.processing_level == 'Level-2A':
+                    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
+                                              zlib=True, complevel=compression_level, chunksizes=chunk_size)
+                else:
+                    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
+                                                  zlib=True, complevel=compression_level)
                 varout.units = 'degree'
                 if 'sun' in k:
                     varout.long_name = 'Solar %s angle' % k.split('_')[-1]
