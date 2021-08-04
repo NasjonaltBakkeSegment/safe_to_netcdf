@@ -202,7 +202,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                             if self.processing_level == 'Level-2A':
                                 varout.standard_name = 'surface_bidirectional_reflectance'
                             else:
-                                varout.coordinates = "lat lon"
                                 varout.standard_name = 'toa_bidirectional_reflectance'
                             varout.long_name = 'Reflectance in band %s' % varName
                             if band_metadata:
@@ -312,11 +311,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
                                                         type=np.float32)
 
-                if self.processing_level == 'Level-2A':
-                    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
-                                              zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                else:
-                    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
+                varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
                                                   zlib=True, complevel=compression_level)
                 varout.units = 'degree'
                 if 'sun' in k:
