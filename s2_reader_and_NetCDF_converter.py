@@ -227,7 +227,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ##########################################################
             source_crs = osr.SpatialReference()
             source_crs.ImportFromWkt(self.reference_band.GetProjection())
-            nc_crs = ncout.createVariable('UTM_projection', np.int32, ('time'))
+            nc_crs = ncout.createVariable('UTM_projection', np.int32)
             nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
             nc_crs.proj4_string = source_crs.ExportToProj4()
             nc_crs.crs_wkt = source_crs.ExportToWkt()
@@ -708,12 +708,12 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
 
-
+    # Reference S2 products
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
                 'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA',
                 'S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
 
-    products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
+    #products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
 
     for product in products:
 
