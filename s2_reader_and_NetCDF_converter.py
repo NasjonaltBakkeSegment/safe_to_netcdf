@@ -646,9 +646,9 @@ class Sentinel2_reader_and_NetCDF_converter:
         # Read actual vector information
         flags = src.gml_id
         if name == "Clouds":
-            values = flags.apply(lambda x: int(x.split('.')[-1]) + 1)
+            geom_values = flags.apply(lambda x: int(x.split('.')[-1]) + 1)
         else:
-            values = flags.apply(lambda x: int(x[-1]) + 1)
+            geom_values = flags.apply(lambda x: int(x[-1]) + 1)
 
         # -------------------------------
         #    Write to nc file
@@ -692,14 +692,14 @@ class Sentinel2_reader_and_NetCDF_converter:
         ncxnode[:] = x
 
         # - vector information
-        varout = ncfile.createVariable(name, 'i1', ('time', f'instance_{name}'))
-        # todo: update long_name and comment
-        #varout.long_name = f"{name} mask 10m resolution"
+        varout = ncfile.createVariable(name, 'byte', ('time', f'instance_{name}'))
+        # todo: add a comment? before it was "Rasterized vector information."
+        varout.long_name = f"{name} mask 10m resolution"
         varout.grid_mapping = "UTM_projection"
         varout.geometry = f'geometry_container_{name}'
-        varout.flag_values = values
+        varout.flag_values = geom_values.values.astype('b')
         varout.flag_meanings = ' '.join(flags)
-        varout[0, :] = values
+        varout[0, :] = geom_values
 
         return
 
@@ -713,7 +713,7 @@ if __name__ == '__main__':
                 'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA',
                 'S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
 
-    #products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
+    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
