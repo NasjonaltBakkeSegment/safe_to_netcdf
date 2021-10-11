@@ -68,6 +68,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.vectorInformation = defaultdict(list)
         self.SAFE_structure = None
         self.image_list_dterreng = []
+        self.read_ok = True
 
         self.main()
 
@@ -87,7 +88,11 @@ class Sentinel2_reader_and_NetCDF_converter:
         if not self.dterrengdata:
             currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
         else:
-            currXml = self.xmlFiles['MTD_TL']
+            currXml = self.xmlFiles.get('MTD_TL', None)
+        if currXml is None:
+            logger.error("xml file not found in SAFE directory. Hence exiting")
+            self.read_ok = False
+            return False
         self.readSunAndViewAngles(currXml)
 
         # 5) Retrieve SAFE product structure
@@ -414,7 +419,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 # Add orbit specific data
                 ##########################################################
                 # Status
-                print('\nAdding satellite orbit specific data')
+                logger.info('Adding satellite orbit specific data')
 
                 platform_id = {"Sentinel-2A":0, "Sentinel-2B":1,
                                "Sentinel-2C":2,"Sentinel-2D":3,}
