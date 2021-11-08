@@ -32,6 +32,7 @@ import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import os
 import logging
+import rasterio
 gdal.UseExceptions()
 
 
@@ -275,9 +276,11 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Add vector layers
             ##########################################################
             # Status
-            logger.info('Adding vector layers')
+            logger.info('Adding masks layers')
             utils.memory_use(self.t0)
+            gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
 
+            # Old masks format
             for gmlfile in self.xmlFiles.values():
                 if gmlfile and gmlfile.suffix == '.gml':
                     layer = gmlfile.stem
@@ -295,12 +298,48 @@ class Sentinel2_reader_and_NetCDF_converter:
                         varout.long_name = f"{layer_name} mask 10m resolution"
                         varout.comment = f"Rasterized {comment_name} information."
                         if not self.processing_level == 'Level-2A':
-                            varout.coordinates = "lat lon"
+                             varout.coordinates = "lat lon"
                         varout.grid_mapping = "UTM_projection"
                         varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
                         varout.flag_meanings = ' '.join(
                             [key.replace('-', '_') for key in list(layer_mask.keys())])
                         varout[0, :] = mask
+
+            # Add mask information, new jp2 format
+            for k, v in self.imageFiles.items():
+                if v.suffix == '.jp2' and v.stem.startswith('MSK_'):
+                    utils.memory_use(self.t0)
+                    logger.debug((k, v))
+                    # Read and resample image to 10m resolution
+                    src = rasterio.open(v)
+                    upscale_factor = nx / src.shape[1]
+                    img = src.read(out_shape=(src.count,
+                        int(src.height * upscale_factor), int(src.width * upscale_factor)),
+                        resampling=rasterio.enums.Resampling.bilinear)
+                    # Several masks per file
+                    for i in src.indexes:
+                        dataType = src.dtypes[i-1]
+                        if v.stem.startswith('MSK_CLASSI'):
+                            masks = ['OPAQUE', 'CIRRUS', 'SNOW']
+                            comment = ['Bit is 1 when pixel is OPAQUE', 'Bit is 1 when pixel is CIRRUS', 'Bit is 1 when pixel is SNOW/ICE']
+                        elif v.stem.startswith('MSK_DETFOO'):
+                            masks = ['DETECTOR FOOTPRINT']
+                            comment = ['4 bits to encode the 12 detectors']
+                        elif v.stem.startswith('MSK_QUALIT'):
+                            masks = ['ANC_LOST', 'ANC_DEG', 'MSI_LOST', 'MSI_DEG', 'QT_DEFECTIVE_PIXELS', 'QT_NODATA_PIXELS', 'QT_PARTIALLY_CORRECTED_PIXELS', 'QT_SATURATED_PIXELS']
+                            comment = ['Bit is 1 when pixel is ANC data lost', 'Bit is 1 when pixel is ANC data degraded',
+                                       'Bit is 1 when pixel is MSI data lost', 'Bit is 1 when pixel is MSI data degraded',
+                                       'Bit is 1 when pixel is defective', 'Bit is 1 when pixel is NO_DATA',
+                                       'Bit is 1 when pixel is PARTIALLY_CORRECTED', 'Bit is 1 when pixel is saturated at L1A or L1B']
+                        varout = ncout.createVariable('_'.join([v.stem, masks[i-1]]), dataType, ('time', 'y', 'x'), fill_value=0,
+                                                  zlib=True, complevel=compression_level, chunksizes=chunk_size)
+                        # varout.coordinates = "lat lon" ;
+                        varout.grid_mapping = "UTM_projection"
+                        varout.long_name = f'{masks[i-1]} from {k})'
+                        varout.comment = comment[i-1]
+                        varout[0, :, :] = img[i-1, :, :]
+                        if not self.processing_level == 'Level-2A':
+                            varout.coordinates = "lat lon"
 
             # Add Level-2A layers
             ##########################################################
