@@ -17,6 +17,7 @@
 # Need to use gdal 2.1.1-> to have support of the SAFE reader
 
 import pathlib
+import sys
 import math
 from collections import defaultdict
 from datetime import datetime
@@ -331,11 +332,13 @@ class Sentinel2_reader_and_NetCDF_converter:
                                        'Bit is 1 when pixel is MSI data lost', 'Bit is 1 when pixel is MSI data degraded',
                                        'Bit is 1 when pixel is defective', 'Bit is 1 when pixel is NO_DATA',
                                        'Bit is 1 when pixel is PARTIALLY_CORRECTED', 'Bit is 1 when pixel is saturated at L1A or L1B']
+                        else:
+                           continue
                         varout = ncout.createVariable('_'.join([v.stem, masks[i-1]]), dataType, ('time', 'y', 'x'), fill_value=0,
                                                   zlib=True, complevel=compression_level, chunksizes=chunk_size)
                         # varout.coordinates = "lat lon" ;
                         varout.grid_mapping = "UTM_projection"
-                        varout.long_name = f'{masks[i-1]} from {k})'
+                        varout.long_name = f'{masks[i-1]} from {k}'
                         varout.comment = comment[i-1]
                         varout[0, :, :] = img[i-1, :, :]
                         if not self.processing_level == 'Level-2A':
@@ -758,18 +761,21 @@ class Sentinel2_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS')
 
-    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
-    #products = ['S2B_MSIL2A_20210105T114359_N0214_R123_T30VUK_20210105T125015']
-    #products = ['S2B_MSIL2A_20210413T105619_N0300_R094_T32VMK_20210413T125254']
+    # Log to console
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    log_info = logging.StreamHandler(sys.stdout)
+    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(log_info)
 
-    ##products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-    ##            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
+    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_01')
+    #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
 
-    workdir1 = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_01')
-    workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
+    products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
+
+    ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
 
     for product in products:
 
@@ -777,7 +783,6 @@ if __name__ == '__main__':
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir1 / product,
-            #indir=outdir,
+            indir=workdir / product,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
