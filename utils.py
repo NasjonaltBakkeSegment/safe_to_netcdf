@@ -13,6 +13,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def xml_read(xml_file):
     """
     Read XML file.
@@ -180,7 +181,10 @@ def uncompress(self):
         logger.debug('Done unzipping SAFE archive')
 
     # Try and find the main XML file
-    xmlFile = self.SAFE_dir / 'manifest.safe'
+    if self.SAFE_dir.stem.startswith('S3'):
+        xmlFile = self.SAFE_dir / 'xfdumanifest.xml'
+    else:
+        xmlFile = self.SAFE_dir / 'manifest.safe'
     if not xmlFile.is_file():
         xmlFile = self.SAFE_dir / 'MTD_MSIL1C.xml'
         if not xmlFile.is_file():
