@@ -308,7 +308,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             # Add mask information, new jp2 format
             for k, v in self.imageFiles.items():
-                if v.suffix == '.jp2' and v.stem.startswith('MSK_'):
+                if v.suffix == '.jp2' and (v.stem.startswith('MSK_DETFOO') or v.stem.startswith('MSK_CLASSI')):
                     utils.memory_use(self.t0)
                     logger.debug((k, v))
                     # Read and resample image to 10m resolution
@@ -769,11 +769,14 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_01')
+    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated')
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
 
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
+    products = [
+        'S2B_MSIL1C_20211010T105859_N0301_R094_T29QND_20211010T131714',
+        'S2B_MSIL1C_20211010T105859_N7990_R094_T29QND_20211117T185835',
+        'S2B_MSIL2A_20211010T105859_N0301_R094_T29QND_20211010T141305',
+        'S2B_MSIL2A_20211010T105859_N7990_R094_T29QND_20211117T202959']
 
     ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
 
@@ -786,3 +789,6 @@ if __name__ == '__main__':
             indir=workdir / product,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
+
+
+
