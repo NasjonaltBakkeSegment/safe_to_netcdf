@@ -20,7 +20,8 @@ import pathlib
 import sys
 import math
 from collections import defaultdict
-from datetime import datetime
+import datetime as dt
+import pytz
 import lxml.etree as ET
 import netCDF4
 import numpy as np
@@ -29,8 +30,8 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
-import safe_to_netcdf.utils as utils
-import safe_to_netcdf.constants as cst
+from safe_to_netcdf import utils
+from safe_to_netcdf import constants as cst
 import os
 import logging
 import rasterio
@@ -62,7 +63,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.imageFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = datetime.now()
+        self.t0 = dt.datetime.now(tz=pytz.utc)
         self.ncout = None  # NetCDF output file
         self.reference_band = None
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C
@@ -771,10 +772,10 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_01')
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
 
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
-
+    #products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
     ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
 
     for product in products:

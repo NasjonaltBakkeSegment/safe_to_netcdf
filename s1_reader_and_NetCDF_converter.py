@@ -12,13 +12,13 @@
 
 import sys
 from collections import defaultdict
-from datetime import datetime
-from datetime import timedelta
+import datetime as dt
+import pytz
 import netCDF4
 import numpy as np
 from scipy import interpolate
 import pathlib
-import safe_to_netcdf.utils as utils
+from safe_to_netcdf import utils
 import logging
 
 
@@ -50,7 +50,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.xmlFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = datetime.now()
+        self.t0 = dt.datetime.now(tz=pytz.utc)
         self.ncout = None  # NetCDF output file
         self.xmlCalPixelLines = defaultdict(list)
         self.xmlCalLUTs = defaultdict(list)
@@ -105,7 +105,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                 if not parameter == 'azimuthTime':
                     self.xmlGCPs[str(parameter + '_' + polarisation)] = np.array(values, np.float32)
                 else:
-                    self.xmlGCPs[str(parameter + '_' + polarisation)] = np.array(values, np.str)
+                    self.xmlGCPs[str(parameter + '_' + polarisation)] = np.array(values, str)
 
         # retrieve product metadata from image annotation files
         productMetadata_parameters = [
@@ -451,7 +451,7 @@ class Sentinel1_reader_and_NetCDF_converter:
             current_variable = key.split('_')[0]
             if current_variable == 'azimuthTime':
                 var = ncout.createVariable(str('GCP_%s' % key), 'f4', ('gcp_index'), zlib=True)
-                dates = np.array([datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f') for t in value])
+                dates = np.array([dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f') for t in value])
                 ref_date = dates.min()
                 value = np.array([td.total_seconds() for td in dates - ref_date])
                 var.units = 's'
@@ -853,7 +853,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         validNoiseRangeVectors = []
         first_index = None
         for index, vector in enumerate(noiseRangeVectors):
-            vector_time = datetime.strptime(vector, '%Y-%m-%dT%H:%M:%S.%f')
+            vector_time = dt.datetime.strptime(vector, '%Y-%m-%dT%H:%M:%S.%f')
 
             if noiseAzimuthVectorStart <= vector_time <= noiseAzimuthVectorStop:
                 validNoiseRangeVectors.append(vector)
@@ -879,7 +879,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         valid_vectors, index = self.getNoiseRangeRecordsInInterval(noiseRangeKeys,
                                                                    currentSwathStartTime,
                                                                    currentSwathEndTime)
-        valid_vectors_dt = [datetime.strptime(vector, '%Y-%m-%dT%H:%M:%S.%f') for vector in
+        valid_vectors_dt = [dt.datetime.strptime(vector, '%Y-%m-%dT%H:%M:%S.%f') for vector in
                             valid_vectors]
 
         nearest_record = [min(valid_vectors_dt, key=lambda x: abs(x - blockCenterTime)).strftime(
@@ -899,7 +899,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
             polarisation -- polarisation
         """
-        t0_duration = datetime.now()
+        t0_duration = dt.datetime.now()
         imageAnnotation = self.imageAnnotation[polarisation]
 
         old_convention = False
@@ -912,7 +912,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         noiseRangeVectorList = noiseAzimuthAndRangeVectorList['range']
 
         swathList = self.readSwathList(noiseAzimuthAndRangeVectorList)
-        t0 = datetime.strptime(imageAnnotation['productFirstLineUtcTime'], '%Y-%m-%dT%H:%M:%S.%f')
+        t0 = dt.datetime.strptime(imageAnnotation['productFirstLineUtcTime'], '%Y-%m-%dT%H:%M:%S.%f')
         delta_ts = float(imageAnnotation['azimuthTimeInterval'])  # [s]
         noiseAzimuthMatrix = np.zeros((self.ySize, self.xSize))
         noiseRangeMatrix = np.zeros((self.ySize, self.xSize))
@@ -930,8 +930,8 @@ class Sentinel1_reader_and_NetCDF_converter:
                     lastRangeSample = int(values[3])
                     # line = np.array(values[4].split(),np.int)
                     # noiseAzimuthLUT = np.array(values[5].split(),np.float)
-                    noiseAzimuthVectorStart = t0 + timedelta(seconds=firstAzimuthLine * delta_ts)
-                    noiseAzimuthVectorStop = t0 + timedelta(seconds=lastAzimuthLine * delta_ts)
+                    noiseAzimuthVectorStart = t0 + dt.timedelta(seconds=firstAzimuthLine * delta_ts)
+                    noiseAzimuthVectorStop = t0 + dt.timedelta(seconds=lastAzimuthLine * delta_ts)
                     if not currentSwathStartTime:
                         currentSwathStartTime = noiseAzimuthVectorStart
                     else:
@@ -954,16 +954,16 @@ class Sentinel1_reader_and_NetCDF_converter:
                     lastAzimuthLine = int(values[2])
                     firstRangeSample = int(values[1])
                     lastRangeSample = int(values[3])
-                    noiseAzimuthVectorStart = t0 + timedelta(seconds=firstAzimuthLine * delta_ts)
-                    noiseAzimuthVectorStop = t0 + timedelta(seconds=lastAzimuthLine * delta_ts)
+                    noiseAzimuthVectorStart = t0 + dt.timedelta(seconds=firstAzimuthLine * delta_ts)
+                    noiseAzimuthVectorStop = t0 + dt.timedelta(seconds=lastAzimuthLine * delta_ts)
                     sampleIndex = np.arange(firstRangeSample, lastRangeSample + 1)
                     lineIndex = np.arange(firstAzimuthLine, lastAzimuthLine + 1)
                     numberOfSamples = lastRangeSample - firstRangeSample + 1
                     numberOfLines = lastAzimuthLine - firstAzimuthLine + 1
 
                     if not old_convention:
-                        line = np.array(values[4].split(), np.int)
-                        noiseAzimuthLUT = np.array(values[5].split(), np.float)
+                        line = np.array(values[4].split(), int)
+                        noiseAzimuthLUT = np.array(values[5].split(), float)
                         # print noiseAzimuthVector_id,lineIndex,line, noiseAzimuthLUT
                         if len(line) > 1:
                             intp1 = interpolate.interp1d(line, noiseAzimuthLUT,
@@ -1019,9 +1019,9 @@ class Sentinel1_reader_and_NetCDF_converter:
                     for index, key in enumerate(validRangeVectorKeys):
                         rangeRecordIndex = index + noiseRangeVectorFirstIndex
                         rangeRecPixels_ = np.array(noiseRangeVectorList[key][1].split(),
-                                                   np.int)  # getNoiseRangeRecordByIndex (
+                                                   int)  # getNoiseRangeRecordByIndex (
                         # rangeRecordIndex)
-                        rangeRecLines_ = np.array(noiseRangeVectorList[key][2].split(), np.float)
+                        rangeRecLines_ = np.array(noiseRangeVectorList[key][2].split(), float)
                         rangePixelToInterp_0 = np.argwhere(
                             rangeRecPixels_ >= firstRangeSample).min()
                         rangePixelToInterp_n = np.argwhere(rangeRecPixels_ <= lastRangeSample).max()
@@ -1037,7 +1037,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                                                            fill_value='extrapolate')
                         noiseRangeVectorList_[:, index] = intp1_range(sampleIndex)
 
-                        noiseRangeVectorLine_[index] = np.int(noiseRangeVectorList[key][0])
+                        noiseRangeVectorLine_[index] = int(noiseRangeVectorList[key][0])
 
                     # STEP 3
                     # Generate range/azimuth denoising correction
@@ -1057,7 +1057,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 
         noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
-        delta = datetime.now() - t0_duration
+        delta = dt.datetime.now() - t0_duration
         logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
 
@@ -1065,22 +1065,19 @@ class Sentinel1_reader_and_NetCDF_converter:
 if __name__ == '__main__':
 
     workdir = pathlib.Path('/home/elodief/Data/NBS')
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
 
     products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
                 'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
 
-    # Noise matrix pb
-    products = ['S1A_EW_GRDH_1SDH_20201023T180210_20201023T180420_034927_0412AD_4F16']
-
-    #products = ['S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
+    products = ['S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'bugfix_noise_02' / product
+        outdir = workdir / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / 'NBS_test_data' / 'zips',
-            #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            indir=workdir / product,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
