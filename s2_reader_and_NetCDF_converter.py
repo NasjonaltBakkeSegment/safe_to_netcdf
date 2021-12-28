@@ -22,23 +22,15 @@ import math
 from collections import defaultdict
 import datetime as dt
 import pytz
-import lxml.etree as ET
 import netCDF4
 import numpy as np
-import osgeo.ogr as ogr
 import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
-<<<<<<< HEAD
 import geopandas as geopd
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
-=======
-from safe_to_netcdf import utils
-from safe_to_netcdf import constants as cst
->>>>>>> sentinel3
-import os
 import logging
 import rasterio
 gdal.UseExceptions()
@@ -75,7 +67,6 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C
         self.sunAndViewAngles = defaultdict(list)
         self.vectorInformation = defaultdict(list)
-        self.SAFE_structure = None
         self.image_list_dterreng = []
         self.read_ok = True
 
@@ -103,11 +94,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             self.read_ok = False
             return False
         self.readSunAndViewAngles(currXml)
-
-        # 5) Retrieve SAFE product structure
-        # much difficulty afterwards to be able to save this to netCDF
-        ##self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
-        self.SAFE_structure = self.list_product_structure()
 
     def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 32, 32)):
         """ Method writing output NetCDF product.
@@ -261,48 +247,48 @@ class Sentinel2_reader_and_NetCDF_converter:
             utils.memory_use(self.t0)
             gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
 
-            # Old masks format
-            for gmlfile in self.xmlFiles.values():
-                if gmlfile and gmlfile.suffix == '.gml':
-                    self.write_vector(gmlfile, ncout)
+            ### Old masks format
+            ##for gmlfile in self.xmlFiles.values():
+            ##    if gmlfile and gmlfile.suffix == '.gml':
+            ##        self.write_vector(gmlfile, ncout)
 
-            # Add mask information, new jp2 format
-            for k, v in self.imageFiles.items():
-                if v.suffix == '.jp2' and (v.stem.startswith('MSK_DETFOO') or v.stem.startswith('MSK_CLASSI')):
-                    utils.memory_use(self.t0)
-                    logger.debug((k, v))
-                    # Read and resample image to 10m resolution
-                    src = rasterio.open(v)
-                    upscale_factor = nx / src.shape[1]
-                    img = src.read(out_shape=(src.count,
-                        int(src.height * upscale_factor), int(src.width * upscale_factor)),
-                        resampling=rasterio.enums.Resampling.bilinear)
-                    # Several masks per file
-                    for i in src.indexes:
-                        dataType = src.dtypes[i-1]
-                        if v.stem.startswith('MSK_CLASSI'):
-                            masks = ['OPAQUE', 'CIRRUS', 'SNOW']
-                            comment = ['Bit is 1 when pixel is OPAQUE', 'Bit is 1 when pixel is CIRRUS', 'Bit is 1 when pixel is SNOW/ICE']
-                        elif v.stem.startswith('MSK_DETFOO'):
-                            masks = ['DETECTOR FOOTPRINT']
-                            comment = ['4 bits to encode the 12 detectors']
-                        elif v.stem.startswith('MSK_QUALIT'):
-                            masks = ['ANC_LOST', 'ANC_DEG', 'MSI_LOST', 'MSI_DEG', 'QT_DEFECTIVE_PIXELS', 'QT_NODATA_PIXELS', 'QT_PARTIALLY_CORRECTED_PIXELS', 'QT_SATURATED_PIXELS']
-                            comment = ['Bit is 1 when pixel is ANC data lost', 'Bit is 1 when pixel is ANC data degraded',
-                                       'Bit is 1 when pixel is MSI data lost', 'Bit is 1 when pixel is MSI data degraded',
-                                       'Bit is 1 when pixel is defective', 'Bit is 1 when pixel is NO_DATA',
-                                       'Bit is 1 when pixel is PARTIALLY_CORRECTED', 'Bit is 1 when pixel is saturated at L1A or L1B']
-                        else:
-                           continue
-                        varout = ncout.createVariable('_'.join([v.stem, masks[i-1]]), dataType, ('time', 'y', 'x'), fill_value=0,
-                                                  zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                        # varout.coordinates = "lat lon" ;
-                        varout.grid_mapping = "UTM_projection"
-                        varout.long_name = f'{masks[i-1]} from {k}'
-                        varout.comment = comment[i-1]
-                        varout[0, :, :] = img[i-1, :, :]
-                        if not self.processing_level == 'Level-2A':
-                            varout.coordinates = "lat lon"
+            ### Add mask information, new jp2 format
+            ##for k, v in self.imageFiles.items():
+            ##    if v.suffix == '.jp2' and (v.stem.startswith('MSK_DETFOO') or v.stem.startswith('MSK_CLASSI')):
+            ##        utils.memory_use(self.t0)
+            ##        logger.debug((k, v))
+            ##        # Read and resample image to 10m resolution
+            ##        src = rasterio.open(v)
+            ##        upscale_factor = nx / src.shape[1]
+            ##        img = src.read(out_shape=(src.count,
+            ##            int(src.height * upscale_factor), int(src.width * upscale_factor)),
+            ##            resampling=rasterio.enums.Resampling.bilinear)
+            ##        # Several masks per file
+            ##        for i in src.indexes:
+            ##            dataType = src.dtypes[i-1]
+            ##            if v.stem.startswith('MSK_CLASSI'):
+            ##                masks = ['OPAQUE', 'CIRRUS', 'SNOW']
+            ##                comment = ['Bit is 1 when pixel is OPAQUE', 'Bit is 1 when pixel is CIRRUS', 'Bit is 1 when pixel is SNOW/ICE']
+            ##            elif v.stem.startswith('MSK_DETFOO'):
+            ##                masks = ['DETECTOR FOOTPRINT']
+            ##                comment = ['4 bits to encode the 12 detectors']
+            ##            elif v.stem.startswith('MSK_QUALIT'):
+            ##                masks = ['ANC_LOST', 'ANC_DEG', 'MSI_LOST', 'MSI_DEG', 'QT_DEFECTIVE_PIXELS', 'QT_NODATA_PIXELS', 'QT_PARTIALLY_CORRECTED_PIXELS', 'QT_SATURATED_PIXELS']
+            ##                comment = ['Bit is 1 when pixel is ANC data lost', 'Bit is 1 when pixel is ANC data degraded',
+            ##                           'Bit is 1 when pixel is MSI data lost', 'Bit is 1 when pixel is MSI data degraded',
+            ##                           'Bit is 1 when pixel is defective', 'Bit is 1 when pixel is NO_DATA',
+            ##                           'Bit is 1 when pixel is PARTIALLY_CORRECTED', 'Bit is 1 when pixel is saturated at L1A or L1B']
+            ##            else:
+            ##               continue
+            ##            varout = ncout.createVariable('_'.join([v.stem, masks[i-1]]), dataType, ('time', 'y', 'x'), fill_value=0,
+            ##                                      zlib=True, complevel=compression_level, chunksizes=chunk_size)
+            ##            # varout.coordinates = "lat lon" ;
+            ##            varout.grid_mapping = "UTM_projection"
+            ##            varout.long_name = f'{masks[i-1]} from {k}'
+            ##            varout.comment = comment[i-1]
+            ##            varout[0, :, :] = img[i-1, :, :]
+            ##            if not self.processing_level == 'Level-2A':
+            ##                varout.coordinates = "lat lon"
 
             # Add Level-2A layers
             ##########################################################
@@ -376,39 +362,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                 varout[0, :, :] = resampled_angles
                 counter += 1
 
-            # Add xml files as character values see:
-            # https://stackoverflow.com/questions/37079883/string-handling-in-python-netcdf4
-            ##########################################################
-            # Status
-            logger.info('Adding XML files as character variables')
-            utils.memory_use(self.t0)
-
-            for k, xmlfile in self.xmlFiles.items():
-                if xmlfile and xmlfile.suffix == '.xml':
-                        xmlString = self.xmlToString(xmlfile)
-
-                        if xmlString:
-                            dim_name = str('dimension_' + k.replace('-', '_'))
-                            ncout.createDimension(dim_name, len(xmlString))
-                            msg_var = ncout.createVariable(k.replace('-', '_'), 'S1', dim_name)
-                            msg_var.long_name = str("SAFE xml file: " + k)
-                            msg_var.comment = "Original SAFE xml file added as character values."
-                            # todo DeprecationWarning: tostring() is deprecated. Use tobytes()
-                            # instead.
-                            msg_var[:] = netCDF4.stringtochar(np.array([xmlString], 'S'))
-
-            # Add SAFE product structure as character values
-            ##########################################################
-            # Status
-            logger.info('Adding SAFE product structure as character variable')
-            if self.SAFE_structure:
-                dim_name = str('dimension_SAFE_structure')
-                ncout.createDimension(dim_name, len(self.SAFE_structure))
-                msg_var = ncout.createVariable("SAFE_structure", 'S1', dim_name)
-                msg_var.comment = "Original SAFE product structure xml file as character values."
-                msg_var.long_name = "Original SAFE product structure."
-                msg_var[:] = netCDF4.stringtochar(np.array([self.SAFE_structure], 'S'))
-
             # Add orbit specific data
             ##########################################################
             # Status
@@ -443,7 +396,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             logger.info('Adding global attributes')
             utils.memory_use(self.t0)
 
-            nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
+            nowstr = self.t0.isoformat()
             ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
             ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
             ncout.file_creation_date = nowstr
@@ -468,27 +421,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             utils.memory_use(self.t0)
 
         return out_netcdf.is_file()
-
-    def xmlToString(self, xmlfile):
-        """ Method for reading XML files returning the entire file as single
-            string.
-        """
-        if not xmlfile.is_file():
-            logger.error(('Error: Can\'t find xmlfile %s' % (xmlfile)))
-            return False
-        try:
-            parser = ET.XMLParser(recover=True)
-            tree = ET.parse(str(xmlfile), parser)
-            return ET.tostring(tree)
-        except:
-            logger.info(("Could not parse %s as xmlFile. Try to open regularly." % xmlfile))
-            with open(xmlfile, 'r') as infile:
-                text = infile.read()
-            if text:
-                return text
-            else:
-                logger.error(("Could not parse %s. Something wrong with file." % xmlfile))
-                return False
 
     def readSunAndViewAngles(self, xmlfile):
         """ Method for reading sun and view angles from Sentinel-2
@@ -618,37 +550,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         return latitude, longitude
 
-    def list_product_structure(self):
-        """ Traverse SAFE file structure (or any file structure) and
-            creates a xml file containing the file structure.
-
-            Returns a string representation of the xml file."""
-
-        startpath = str(self.SAFE_dir)
-
-        root_path = startpath.split('/')[-1]
-        ET_root = ET.Element(root_path)
-        # Create dictionary that contains all elements
-        elements = {root_path: ET_root}
-
-        # Iterate throgh the file structure
-        for root, dirs, files in os.walk(startpath):
-            level = root.replace(startpath, '').count(os.sep)
-            current_xpath = str('/' + root_path + root.replace(startpath, ''))
-            current_path = root.replace(startpath, '')
-
-            # Create all folder elements
-            if dirs:
-                for dir in dirs:
-                    element = ET.SubElement(elements[current_xpath.strip('/')], dir)
-                    elements[str(current_xpath.strip('/') + '/' + dir)] = element
-            # Add all files in the correct folder
-            for f in files:
-                sub_element = ET.SubElement(elements[current_xpath.strip('/')], 'file')
-                sub_element.text = f
-
-        return ET.tostring(ET_root)
-
     def write_vector(self, vectorfile, ncfile):
         """
 
@@ -767,20 +668,28 @@ if __name__ == '__main__':
     logger.addHandler(log_info)
 
     workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated')
-    #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
+    workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/new_s2_02')
+    #workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
+
+    indir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/zips')
 
     products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
     #products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
     ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
 
+    products = [
+            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA',
+            'S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
+            'S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226'
+    ]
+
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'cf18_04' / product
+        outdir = workdir / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / product,
+            indir=indir,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
 
