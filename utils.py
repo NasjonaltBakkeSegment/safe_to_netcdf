@@ -5,6 +5,7 @@ Tools
 import pathlib
 import lxml.etree as ET
 import datetime as dt
+import pytz
 import resource
 from osgeo import gdal
 import subprocess as sp
@@ -12,6 +13,7 @@ import zipfile
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 def xml_read(xml_file):
     """
@@ -39,7 +41,7 @@ def memory_use(start_time):
     """
     logger.debug(f"Memory usage so far: "
           f"{float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000} Gb")
-    logger.debug(dt.datetime.now() - start_time)
+    logger.debug(dt.datetime.now(tz=pytz.utc) - start_time)
 
 
 def seconds_from_ref(t, t_ref):
@@ -170,7 +172,10 @@ def uncompress(self):
         logger.debug('Done unzipping SAFE archive')
 
     # Try and find the main XML file
-    xmlFile = self.SAFE_dir / 'manifest.safe'
+    if self.SAFE_dir.stem.startswith('S3'):
+        xmlFile = self.SAFE_dir / 'xfdumanifest.xml'
+    else:
+        xmlFile = self.SAFE_dir / 'manifest.safe'
     if not xmlFile.is_file():
         xmlFile = self.SAFE_dir / 'MTD_MSIL1C.xml'
         if not xmlFile.is_file():
