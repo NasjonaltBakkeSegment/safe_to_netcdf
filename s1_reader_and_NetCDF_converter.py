@@ -59,6 +59,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.noiseVectors = defaultdict(list)
         self.productMetadata = defaultdict(dict)  # list of values from image annotation files
         self.productMetadataList = defaultdict(dict)  # list of lists from image annotation files
+        self.read_ok = True
         self.main()
 
     def main(self):
