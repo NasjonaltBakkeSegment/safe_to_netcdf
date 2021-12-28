@@ -35,6 +35,25 @@ s3_olci_attributes = {
 
 # ------------- Sentinel 2 -------------
 
+s2_attributes = {
+    'Conventions': 'CF-1.8, ACDD-1.3',
+    'reference': 'https://sentinel.esa.int/web/sentinel/user-guides/sentinel-2-msi',
+    'standard_name_vocabulary': 'CF Standard Name Table v69',
+    'keywords_vocabulary': 'GCMD Science Keywords',
+    'keywords': '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
+}
+
+s2_level_attributes = {
+    'Level-1C': {
+        'title': 'Sentinel-2 Level-1C data.',
+        'summary': 'Sentinel-2 Multi-Spectral Instrument Level-1C product.'
+    },
+    'Level-2A': {
+        'title': 'Sentinel-2 Level-2A data.',
+        'summary': 'Sentinel-2 Multi-Spectral Instrument Level-2A product.'
+    }
+}
+
 platform_id = {'Sentinel-2A': 0, 'Sentinel-2B': 1, 'Sentinel-2C': 2, 'Sentinel-2D': 3}
 
 # Bands order

@@ -391,28 +391,25 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
 
             # Add global attributes
-            ##########################################################
-            # Status
+
             logger.info('Adding global attributes')
             utils.memory_use(self.t0)
 
+            # todo: add all metadata needed to create MMD file? so that then we can use nc2mmd from senda project?
+            # todo: add link to colhub?
+            # Generic global attributes - for all NBS products
+            self.globalAttribs.append(cst.global_attributes)
+            # Global attributes for all S2 products
+            self.globalAttribs.update(cst.s2_attributes)
+            # Global attributes specific to level
+            self.globalAttribs.update(cst.s2_level_attributes[self.processing_level])
+
             nowstr = self.t0.isoformat()
-            ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
             ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
             ncout.file_creation_date = nowstr
-
-            self.globalAttribs[
-                'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
-                self.processing_level)
-            self.globalAttribs[
-                'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
-            self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-            self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
+            # todo: how to add history in cste file?
             self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-            self.globalAttribs['source'] = "surface observation"
-            self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
-                'DATATAKE_1_SENSING_ORBIT_NUMBER')
-            self.globalAttribs['Conventions'] = "CF-1.8"
+            self.globalAttribsglobal_attrs['relativeOrbitNumber'] = self.globalAttribs.pop('DATATAKE_1_SENSING_ORBIT_NUMBER')
             ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
