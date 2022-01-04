@@ -397,6 +397,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             # todo: add all metadata needed to create MMD file? so that then we can use nc2mmd from senda project?
             # todo: add link to colhub?
+            # todo: keep all gdal global attributes?
             # Generic global attributes - for all NBS products
             self.globalAttribs.append(cst.global_attributes)
             # Global attributes for all S2 products
