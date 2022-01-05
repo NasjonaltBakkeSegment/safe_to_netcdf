@@ -22,11 +22,14 @@ logger = logging.getLogger(__name__)
     FIXES to be solved
     - tie points having latitude longitude in tie_geo_coordinates. Should be separat group?
     - removed pixels variables uses same names as radiance raster bands. Hence should be fixed.
+    -> for now, only had radiance variables to netcdf
+    
     - should follow swath convention (https://github.com/Unidata/EC-netCDF-CF/blob/master/swath/swath.adoc#radiometric-swath-data-encodings) which is cf v.1.7 compatible
     - should be ACDD compliant
 
     ISSUES:
     - int64: not supported in dap2. will come in dap4 https://www.unidata.ucar.edu/support/help/MailArchives/thredds/msg01762.html
+    -> todo check if it's still the case
 """
 
 
@@ -41,10 +44,8 @@ class S3_olci_reader_and_CF_converter:
             SAFE_id        (str): SAFE filename
             SAFE_outpath   (str): Output directory for unzipeed SAFE file
             SAFE_path      (str): Absolute path to unzipped SAFE directory
-            xmlFiles      (dict): defaultdict containing xml files
             src
             t0           (float): Init time
-            SAFE_structure (str): XML formatted string showing SAFE structure
 
         """
         self.product_id = product
@@ -73,6 +74,8 @@ class S3_olci_reader_and_CF_converter:
             compression_level (int): compression level on output NetCDF file (1-9)
             chunk_size (tuple): chunk size in output NetCDF. Format (rows, columns)
         """
+
+        #todo use ocmpression or not, use chunks or not ???
 
         logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
@@ -106,14 +109,19 @@ class S3_olci_reader_and_CF_converter:
         utils.memory_use(t1)
 
         # Format variables
-        data = data_tmp.rename({'latitude': 'lat', 'longitude': 'lon', 'time_stamp': 'time'})
+        data = data_tmp.rename({'latitude': 'lat', 'longitude': 'lon', 'time_stamp': 'time',
+                                'columns': 'x', 'rows': 'y'})
         for v in data.variables:
             if v.endswith('_radiance'):
                 data[v].attrs['coordinates'] = 'time altitude lat lon'
                 # 'standard_name' in input nc file is not actually a standard name, so update
                 data[v].attrs['standard_name'] = 'upwelling_radiance_per_unit_wavelength_in_air'
-                # Convert from uint to int to be CF
-                data[v] = data[v].astype('int16', copy=False)
+                # Delete irrelevant attributes as ancillary data not included in file
+                del(data[v].attrs['ancillary_variables'])
+                # Convert from uint16 to int32 to be CF compliant -> necessary in CF 1.8
+                # But in CF 1.9, unsigned short (uint16) are allowed
+                # data[v] = data[v].astype('int32', copy=False)
+
         # todo: check lat-lon-time- variable attributes
         ## if v == 'altitude':
         ##     attribs['coordinates'] = 'lon lat'
@@ -135,6 +143,13 @@ class S3_olci_reader_and_CF_converter:
         # nc_crs.inverse_flattening = 298.2572235604902
 
         # Add global attributes
+
+        # Recommended by CF: title , history , institution , source , comment and references
+
+        # Each variable in a netCDF file has an associated description which is provided by the attributes units , long_name , and standard_name .
+        # The units , and long_name attributes are defined in the NUG and the standard_name attribute is defined in this document.
+        # use of long_name or standard_name  use of at least one of them is strongly recommended
+
         # todo: add all metadata needed to create MMD file? so that then we can use nc2mmd from senda project?
         # todo: add link to colhub?
         # Generic global attributes - for all NBS products

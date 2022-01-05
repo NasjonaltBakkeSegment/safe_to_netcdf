@@ -17,7 +17,7 @@ global_attributes = {
 # ------------- Sentinel 3 -------------
 
 s3_olci_attributes = {
-    'Conventions': 'CF-1.7, ACDD-1.3',
+    'Conventions': 'CF-1.9, ACDD-1.3',
     'naming_authority': 'EUMETSAT, ESA: Sentinel 3 PDGS, File Naming Convention',
     'reference': 'https://sentinel.esa.int/web/sentinel/user-guides/sentinel-3-olci',
     'standard_name_vocabulary': 'CF Standard Name Table v69',
