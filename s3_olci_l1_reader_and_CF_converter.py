@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 class S3_olci_reader_and_CF_converter:
     """ S3 OLCI object for merging SAFE files and creating single NetCDF/CF """
 
-    def __init__(self, product, indir, outdir):
+    def __init__(self, product, indir, outdir, uuid=None):
         """ Initializer
 
         Args:
@@ -49,6 +49,8 @@ class S3_olci_reader_and_CF_converter:
 
         """
         self.product_id = product
+        # Optionnaly get uuid from colhub
+        self.uuid = uuid
         self.input_zip = (indir / product).with_suffix('.zip')
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SEN3')
         self.processing_level = 'Level-' + self.product_id.split('_')[2]
@@ -75,7 +77,7 @@ class S3_olci_reader_and_CF_converter:
             chunk_size (tuple): chunk size in output NetCDF. Format (rows, columns)
         """
 
-        #todo use ocmpression or not, use chunks or not ???
+        # todo use ocmpression or not, use chunks or not ???
 
         logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
@@ -101,7 +103,7 @@ class S3_olci_reader_and_CF_converter:
         #ds = xr.open_mfdataset(bands, parallel=True)
 
         # Add time dimension
-        # Do afterwards as dimensions different to the other variables
+        # Done afterwards as dimensions different to the other variables
         time_file = [s for s in nc_files if "time_coordinates.nc" in str(s)][0]
         time = xr.open_dataset(time_file)
         data_tmp = xr.combine_by_coords([ds, time], combine_attrs='override')
@@ -110,7 +112,7 @@ class S3_olci_reader_and_CF_converter:
 
         # Format variables
         data = data_tmp.rename({'latitude': 'lat', 'longitude': 'lon', 'time_stamp': 'time',
-                                'columns': 'x', 'rows': 'y'})
+                                'columns': 'x', 'rows': 't'})
         for v in data.variables:
             if v.endswith('_radiance'):
                 data[v].attrs['coordinates'] = 'time altitude lat lon'
@@ -122,52 +124,59 @@ class S3_olci_reader_and_CF_converter:
                 # But in CF 1.9, unsigned short (uint16) are allowed
                 # data[v] = data[v].astype('int32', copy=False)
 
-        # todo: check lat-lon-time- variable attributes
-        ## if v == 'altitude':
-        ##     attribs['coordinates'] = 'lon lat'
-        ##     attribs['grid_mapping'] = 'crsWGS84'
-        ##     attribs['standard_name'] = 'altitude'
-        ##     attribs['coverage_content_type'] = 'auxiliaryInformation'
-        ##     attribs['positive'] = 'up'
+        # Axis are not compulsory as lat/lon/altitude/time are auxiliary coordinate variables
+        # and not coordinate variables but can help some software to correctly plot data
+        data['altitude'].attrs['axis'] = 'Z'
+        data['altitude'].attrs['positive'] = 'up'
+        data['lat'].attrs['axis'] = 'Y'
+        data['lon'].attrs['axis'] = 'X'
+        data['time'].attrs['axis'] = 'T'
 
-        ## if 'coordinates' in attribs.keys():
-        ##     attribs['coordinates'] = 'lon lat'
-        ##     attribs['grid_mapping'] = 'crsWGS84'
-        ##     attribs['coverage_content_type'] = 'physicalMeasurement'
-
-        # todo: necessary to be CF?
-        # # Set grid mapping
+        # Set grid mapping - not compulsory in CF 1.9 as lat-lon are provided
+        # is it helpful / necessary?
+        # see https://cfconventions.org/Data/cf-conventions/cf-conventions-1.9/cf-conventions.html#appendix-grid-mappings
+        # If add grid mapping, must be added as attribute to variables:
+        # data[v].attribs['grid_mapping'] = 'crsWGS84'
+        # todo: Trygve, where are these values coming from?
+        # is it a copy of https://cfconventions.org/Data/cf-conventions/cf-conventions-1.9/cf-conventions.html#latitude-and-longitude-on-the-wgs-1984-datum
         # nc_crs = ncout.createVariable('crsWGS84', "i2")
         # nc_crs.grid_mapping_name = "latitude_longitude"
         # nc_crs.semi_major_axis = 6378137.0
         # nc_crs.inverse_flattening = 298.2572235604902
 
         # Add global attributes
-
-        # Recommended by CF: title , history , institution , source , comment and references
-
-        # Each variable in a netCDF file has an associated description which is provided by the attributes units , long_name , and standard_name .
-        # The units , and long_name attributes are defined in the NUG and the standard_name attribute is defined in this document.
-        # use of long_name or standard_name  use of at least one of them is strongly recommended
-
-        # todo: add all metadata needed to create MMD file? so that then we can use nc2mmd from senda project?
-        # todo: add link to colhub?
+        # todo:
+        #  - add link to colhub?
+        # todo: should clear all already existing attributes? some are redundant, others irrelevant now
         # Generic global attributes - for all NBS products
-        data.attrs.update(cst.global_attributes)
+        attrs = {}
+        attrs.update(cst.global_attributes)
+
         # Global attributes for all S3 OLCI products
-        data.attrs.update(cst.s3_olci_attributes)
+        attrs.update(cst.s3_olci)
+        attrs.update(cst.platform[self.product_id[0:3]])
+        attrs.update(cst.instrument['OLCI'])
+
         # Global attributes specific to a dataset
-        data.attrs['id'] = data.attrs.pop('product_name')
-        data.attrs['processing_level'] = self.processing_level
-        data.attrs['date_created'] = self.t0.isoformat()
-        data.attrs['geospatial_lat_min'] = data['lat'].min().values
-        data.attrs['geospatial_lat_max'] = data['lat'].max().values
-        data.attrs['geospatial_lon_min'] = data['lon'].min().values
-        data.attrs['geospatial_lon_max'] = data['lon'].max().values
-        data.attrs['time_coverage_start'] = data.attrs.pop("start_time")
-        data.attrs['time_coverage_end'] = data.attrs.pop("stop_time")
-        data.attrs['history'] = data.attrs['history'] + f'.{self.t0.isoformat()}:' \
-                                                        f' Converted from SAFE to NetCDF/CF by the NBS team.'
+        # todo: should not id be a uuid? and use the same as colhub, like it's done in mmd
+        if self.uuid is not None:
+            attrs['id'] = self.uuid
+        else:
+            attrs['id'] = self.product_id
+        attrs['title'] = self.product_id
+        attrs['date_created'] = self.t0.isoformat()
+        attrs['geospatial_lat_min'] = data['lat'].min().values
+        attrs['geospatial_lat_max'] = data['lat'].max().values
+        attrs['geospatial_lon_min'] = data['lon'].min().values
+        attrs['geospatial_lon_max'] = data['lon'].max().values
+        attrs['time_coverage_start'] = data.attrs.pop("start_time")
+        attrs['time_coverage_end'] = data.attrs.pop("stop_time")
+        attrs['orbit_absolute'], attrs['orbit_relative'], attrs['orbit_direction'] \
+            = utils.orbit_info(root)
+        # todo: add creation date? as a modification or creation date?
+        attrs['history'] = f'{self.t0.isoformat()}: Converted from SAFE to NetCDF/CF by the NBS' \
+                           f' team. ' + data.attrs['history']
+        data.attrs = attrs
 
         # Write netcdf file
         t2 = dt.datetime.now(tz=pytz.utc)

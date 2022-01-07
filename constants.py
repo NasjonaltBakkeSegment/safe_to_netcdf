@@ -7,30 +7,64 @@ Constants describing Sentinel satellites
 # ------------- All Sentinels -------------
 
 global_attributes = {
-     'project': 'Norwegian National Ground Segment for Satellite Data',
-     'institution': 'Norwegian Meteorological Institute',
-     'source': 'surface observation',
-     'license': 'Freely Distributed',
-     'acknowledgement': 'Copernicus EU'
+    'project': 'Nasjonalt BakkeSegment',
+    'project_short_name': 'NBS',
+    'source': 'Space Borne Instrument',
+    'license': 'The use of these data are covered by the Legal notice on the use of Copernicus'
+               ' Sentinel Data and Service Information at https://sentinels.copernicus.eu/'
+               'documents/247904/690755/Sentinel_Data_Legal_Notice',
+    'acknowledgement': 'Copernicus EU',
+    'dataset_production_status': 'In Work',
+    'spatial_representation': 'grid',
+    'processing_level': 'Operational',
+    'creator_role': 'Data center contact, Metadata author',
+    'creator_name': 'NBS Helpdesk, NBS team',
+    'creator_email': 'nbs-helpdesk@met.no, nbs-helpdesk@met.no',
+    'creator_institution': 'Norwegian Meteorological Institute, Norwegian Meteorological Institute',
+    'institution': 'Norwegian Meteorological Institute',
+    'institution_short_name': 'METNO',
+    'publisher_url': 'https://met.no'
+}
+
+platform = {
+    'S3A': {
+        'platform_short_name': 'Sentinel-3A',
+        'platform': 'Sentinel-3A',
+        'platform_vocabulary': 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3a'
+    },
+    'S3B': {
+        'platform_short_name': 'Sentinel-3B',
+        'platform': 'Sentinel-3B',
+        'platform_vocabulary': 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3b'
+    }
+}
+
+instrument = {
+    'OLCI': {
+        'instrument_short_name': 'OLCI',
+        'instrument': 'Ocean and Land Colour Imager',
+        'instrument_vocabulary': 'https://www.wmo-sat.info/oscar/instruments/view/olci'
+    }
 }
 
 # ------------- Sentinel 3 -------------
 
-s3_olci_attributes = {
-    'Conventions': 'CF-1.9, ACDD-1.3',
-    'naming_authority': 'EUMETSAT, ESA: Sentinel 3 PDGS, File Naming Convention',
+s3_olci = {
+    'Conventions': 'CF-1.9 ACDD-1.3',
     'reference': 'https://sentinel.esa.int/web/sentinel/user-guides/sentinel-3-olci',
-    'standard_name_vocabulary': 'CF Standard Name Table v69',
     'comment': 'This product contains selected information from Copernicus Sentinel-3 '
                'OLCI product. To obtain all data, please refer to the SAFE format available '
                'at colhub.met.no',
-    'title': 'Sentinel-3 OCLI product in NetCDF/CF',
-    'summary': 'Sentinel-3 Ocean and Land Color Instrument product in NetCDF/CF.',
-    'keywords_vocabulary': 'GCMD Science Keywords',
-    'keywords': [
-        'SPECTRAL/ENGINEERING > INFRARED WAVELENGTHS > REFLECTED INFRARED',
-        'SPECTRAL/ENGINEERING > VISIBLE WAVELENGTHS > VISIBLE RADIANCE'
-    ]
+    'summary': 'The main objective of the SENTINEL-3 mission is to measure sea surface topography, '
+               'sea and land surface temperature, and ocean and land surface colour with high '
+               'accuracy and reliability to support ocean forecasting systems, environmental '
+               'monitoring and climate monitoring.',
+    'keywords_vocabulary':
+        'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,'
+        'GEMET::http://inspire.ec.europa.eu/theme',
+    'keywords': 'GCMDSK:Earth Science > Atmosphere > Atmospheric radiation > Reflectance,'
+                'GEMET:Orthoimagery,GEMET:Land cover,GEMET:Oceanographic geographical features',
+    'iso_topic_category': 'climatologyMeteorologyAtmosphere,imageryBaseMapsEarthCover,oceans,inlandWaters'
 }
 
 # ------------- Sentinel 2 -------------
@@ -95,4 +129,3 @@ s2_scene_classification_flags = {
     'THIN_CIRRUS': 10,
     'SNOW_ICE': 11
 }
-

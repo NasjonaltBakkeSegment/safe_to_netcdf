@@ -197,4 +197,24 @@ def uncompress(self):
     self.mainXML = xmlFile
     return True
 
+
+def orbit_info(manifest):
+    """
+
+    :param manifest:
+    :return:
+    """
+    #todo: check with S1, s2, S2DTERR xml files
+    try:
+        orbit = manifest.find('.//sentinel-safe:orbitNumber', namespaces=manifest.nsmap)
+        orbit_absolute = orbit.text
+        orbit_direction = orbit.get('groundTrackDirection')
+        orbit_relative = manifest.find('.//sentinel-safe:relativeOrbitNumber',
+                                            namespaces=manifest.nsmap).text
+    except SyntaxError:
+        orbit_absolute = manifest.find('.//safe:orbitNumber', namespaces=manifest.nsmap).text
+
+    return orbit_absolute, orbit_relative, orbit_direction
+
+
 # Add function to clean work files?
