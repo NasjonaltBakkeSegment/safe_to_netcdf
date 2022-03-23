@@ -188,3 +188,10 @@ def uncompress(self):
     return True
 
 # Add function to clean work files?
+
+def get_key(my_dict,val):
+    for key, value in my_dict.items():
+         if val == value:
+             return key
+ 
+    return "There is no such Key"
