@@ -93,7 +93,7 @@ s2_bands_aliases = {
 # for specific layers: If nb. raster bands > 1, use the naming convention below.
 # L1C: layers
 s2_l1c_layers = {
-    'ClassiPixelsMask_Band_00m_0_Tile1_Data': 'MSK_CIRRUS MSK_OPAQUE MSK_SNOICE, Cirrus cloud mask-Opaque cloud mask-Snow ice mask',
+    'ClassiPixelsMask_Band_00m_0_Tile1_Data': 'MSK_OPAQUE MSK_CIRRUS MSK_SNOICE, Cirrus cloud mask-Opaque cloud mask-Snow ice mask',
 }
 # L2A: layers
 s2_l2a_layers = {

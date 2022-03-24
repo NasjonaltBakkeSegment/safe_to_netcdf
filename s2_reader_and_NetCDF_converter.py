@@ -272,10 +272,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                             specific_layers_kv[k] = cst.s2_l1c_layers[layer]
                 
 
-
-            # Add Level-2A layers
-            ##########################################################
-            # Status
             elif self.processing_level == 'Level-2A':
                 logger.info('Adding Level-2A specific layers')
                 for layer in cst.s2_l2a_layers:
