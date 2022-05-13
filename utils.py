@@ -10,6 +10,9 @@ from osgeo import gdal
 import subprocess as sp
 import zipfile
 import logging
+import yaml
+from pkg_resources import resource_string
+
 
 logger = logging.getLogger(__name__)
 
@@ -191,5 +194,56 @@ def uncompress(self):
     logger.debug(f'Main file: {xmlFile}')
     self.mainXML = xmlFile
     return True
+
+
+def read_yaml(file):
+    """
+    Read yaml file
+    """
+    return yaml.load(
+        resource_string(
+            globals()['__name__'].split('.')[0], file
+        ), Loader=yaml.FullLoader
+    )
+
+
+def add_global_attributes(self):
+    """
+    Add global attributes to netcdf file
+    """
+
+    all_attribs = read_yaml('global_attributes.yaml')
+
+    nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
+    ncout.file_creation_date = nowstr
+
+    ##ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
+    ##self.globalAttribs['Conventions'] = "CF-1.6"
+    ##self.globalAttribs[
+    ##    'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
+    ##    self.processing_level)
+    ##self.globalAttribs[
+    ##    'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
+    ##self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
+    ##self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
+    ##self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
+    ##self.globalAttribs['source'] = "surface observation"
+    root = utils.xml_read(self.mainXML)
+    if not self.dterrengdata:
+        self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
+                                                      namespaces=root.nsmap).text
+    # Commented out to be stricly identical to older SAFE2NC version in production
+    #else:
+    #    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+
+    self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
+        'DATATAKE_1_SENSING_ORBIT_NUMBER')
+    ncout.setncatts(self.globalAttribs)
+    ncout.sync()
+
+
+
 
 # Add function to clean work files?
