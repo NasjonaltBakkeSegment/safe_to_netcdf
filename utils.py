@@ -13,7 +13,7 @@ import logging
 import yaml
 from pkg_resources import resource_string
 import uuid
-import shapely.wkt
+import shapely.wkt, shapely.ops
 
 logger = logging.getLogger(__name__)
 
@@ -209,15 +209,6 @@ def read_yaml(file):
     )
 
 
-def box_from_polygon(footprint):
-    """
-    Get bounding box from a polygon
-    :param footprint:
-    :return: minx, miny, maxx, maxy
-    """
-    return shapely.wkt.loads(footprint).bounds
-
-
 def get_global_attributes(self):
     """
     Add global attributes to netcdf file
@@ -237,37 +228,71 @@ def get_global_attributes(self):
     self.globalAttribs.update(all[satellite])
 
     # todo: think about that
+    # maybe just leave it at None? For now, better like that to be able to test nc2mmd
     if self.uuid is None:
+        logger.warning('uuid not found so created a new one.')
         self.uuid = str(uuid.uuid4())
 
     # Product level specific metadata
     # (S2-Level2A, ...)
     # -> can be empty
-    self.globalAttribs.update(all.get('_'.join([satellite[0:2], self.processing_level])))
+    # does not seem to be necessary
+    #self.globalAttribs.update(all.get('_'.join([satellite[0:2], self.processing_level])))
 
     # Product specific metadata
-    root = xml_read(self.mainXML)
-    box = box_from_polygon(self.globalAttribs['FOOTPRINT'])
     self.globalAttribs.update({
         'date_metadata_modified': self.t0.isoformat(),
         'date_metadata_modified_type': 'Created',
         'date_created': self.t0.isoformat(),
         'history': f'{self.t0.isoformat()}: Converted from SAFE to NetCDF by NBS team.',
         'title': self.product_id,
-        'orbit_number': root.find('.//safe:orbitNumber', namespaces=root.nsmap).text,
-        'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
-        'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION"),
-        'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
-        'product_type': self.globalAttribs.pop("PRODUCT_TYPE"),
         'id': self.uuid,
-        'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
-        'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
-        'geospatial_bounds': self.globalAttribs.pop('FOOTPRINT'),
+        'product_type': self.globalAttribs.pop("PRODUCT_TYPE"),
+    })
+
+    root = xml_read(self.mainXML)
+
+    if satellite.startswith('S2'):
+        polygon = shapely.wk.loads(self.globalAttribs.pop(['FOOTPRINT']))
+        self.globalAttribs.update({
+            'orbit_number': root.find('.//safe:orbitNumber', namespaces=root.nsmap).text,
+            'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
+            'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION"),
+            'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
+            'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
+            'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
+        })
+
+    elif satellite.startswith('S1'):
+        # Get coordinates from manifest
+        coords = root.find('.//gml:coordinates', namespaces=root.nsmap).text
+        # Necessary to do some formatting to be able to read with shapely,
+        # and to close the polygon by adding the first point at the end
+        formatted = coords.replace(' ', ';').replace(',', ' ').replace(';', ', ')
+        footprint = f"POLYGON(({','.join([formatted, formatted.split(',')[0]])}))"
+        # and lastly need to reverse lat-lon
+        polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
+        self.globalAttribs.update({
+            'orbit_number': self.globalAttribs.pop("ORBIT_NUMBER"),
+            'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION"),
+            'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME'),
+            'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME'),
+            'mode': self.globalAttribs.pop('MODE')
+        })
+
+    # Add bounding box and polygon
+    box = polygon.bounds
+    self.globalAttribs.update({
         'geospatial_lon_min': box[0],
         'geospatial_lat_min': box[1],
         'geospatial_lon_max': box[2],
         'geospatial_lat_max': box[3],
     })
+
+    # Add SIOS in collection if > 70
+    # todo for both S1 and S2 ? check with Trygve?
+    if box[3] > 70:
+        self.globalAttribs['collection'] += ',SIOS'
 
     return
 

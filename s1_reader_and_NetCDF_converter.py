@@ -39,7 +39,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         SAFE_outpath -- output storage location for unzipped SAFE product
     """
 
-    def __init__(self, product, indir, outdir):
+    def __init__(self, product, indir, outdir, colhub_uuid=None):
+        self.uuid = colhub_uuid
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
@@ -517,25 +518,9 @@ class Sentinel1_reader_and_NetCDF_converter:
         logger.info('Adding global attributes')
         utils.memory_use(self.t0)
 
-        nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
-        ncout.title = 'Sentinel-1 GRD data'
-        ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-        ncout.file_creation_date = nowstr
-
-        self.globalAttribs['Conventions'] = "CF-1.6"
-        self.globalAttribs['summary'] = 'Sentinel-1 C-band SAR GRD product.'
-        self.globalAttribs[
-            'keywords'] = '[Earth Science, Spectral/Engineering, RADAR, RADAR backscatter], ' \
-                          '[Earth Science, Spectral/Engineering, RADAR, RADAR imagery], ' \
-                          '[Earth Science, Spectral/Engineering, Microwave, Microwave Imagery]'
-        self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-        self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
-        self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-
+        utils.get_global_attributes(self)
         ncout.setncatts(self.globalAttribs)
         ncout.sync()
-
-        # self.ncout = ncout
 
         # Status
         ncout.close()
@@ -1064,23 +1049,22 @@ class Sentinel1_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS')
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_attributes/S2_N0400')
 
     products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
                 'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
 
     # Noise matrix pb
-    products = ['S1A_EW_GRDH_1SDH_20201023T180210_20201023T180420_034927_0412AD_4F16']
+    #products = ['S1A_EW_GRDH_1SDH_20201023T180210_20201023T180420_034927_0412AD_4F16']
 
     #products = ['S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'bugfix_noise_02' / product
+        outdir = workdir / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / 'NBS_test_data' / 'zips',
-            #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            indir=workdir / product,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)
