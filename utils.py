@@ -253,7 +253,7 @@ def get_global_attributes(self):
     root = xml_read(self.mainXML)
 
     if satellite.startswith('S2'):
-        polygon = shapely.wk.loads(self.globalAttribs.pop(['FOOTPRINT']))
+        polygon = shapely.wkt.loads(self.globalAttribs.pop('FOOTPRINT'))
         self.globalAttribs.update({
             'orbit_number': root.find('.//safe:orbitNumber', namespaces=root.nsmap).text,
             'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
