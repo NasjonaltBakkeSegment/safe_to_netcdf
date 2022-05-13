@@ -12,9 +12,11 @@ import zipfile
 import logging
 import yaml
 from pkg_resources import resource_string
-
+import uuid
+import shapely.wkt
 
 logger = logging.getLogger(__name__)
+
 
 def xml_read(xml_file):
     """
@@ -207,43 +209,67 @@ def read_yaml(file):
     )
 
 
-def add_global_attributes(self):
+def box_from_polygon(footprint):
+    """
+    Get bounding box from a polygon
+    :param footprint:
+    :return: minx, miny, maxx, maxy
+    """
+    return shapely.wkt.loads(footprint).bounds
+
+
+def get_global_attributes(self):
     """
     Add global attributes to netcdf file
     """
 
-    all_attribs = read_yaml('global_attributes.yaml')
+    all = read_yaml('global_attributes.yaml')
 
-    nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
+    satellite = self.product_id[0:3]
 
-    ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-    ncout.file_creation_date = nowstr
+    # NBS project metadata
+    self.globalAttribs.update(all['global'])
 
-    ##ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
-    ##self.globalAttribs['Conventions'] = "CF-1.6"
-    ##self.globalAttribs[
-    ##    'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
-    ##    self.processing_level)
-    ##self.globalAttribs[
-    ##    'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
-    ##self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-    ##self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
-    ##self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-    ##self.globalAttribs['source'] = "surface observation"
-    root = utils.xml_read(self.mainXML)
-    if not self.dterrengdata:
-        self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
-                                                      namespaces=root.nsmap).text
-    # Commented out to be stricly identical to older SAFE2NC version in production
-    #else:
-    #    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
+    # Satellite specific metadata (S1, S2, S3)
+    self.globalAttribs.update(all[satellite[0:2]])
 
-    self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
-        'DATATAKE_1_SENSING_ORBIT_NUMBER')
-    ncout.setncatts(self.globalAttribs)
-    ncout.sync()
+    # Platform specific metadata (S1A, S1B, S2A, S2B, ...)
+    self.globalAttribs.update(all[satellite])
 
+    # todo: think about that
+    if self.uuid is None:
+        self.uuid = str(uuid.uuid4())
 
+    # Product level specific metadata
+    # (S2-Level2A, ...)
+    # -> can be empty
+    self.globalAttribs.update(all.get('_'.join([satellite[0:2], self.processing_level])))
+
+    # Product specific metadata
+    root = xml_read(self.mainXML)
+    box = box_from_polygon(self.globalAttribs['FOOTPRINT'])
+    self.globalAttribs.update({
+        'date_metadata_modified': self.t0.isoformat(),
+        'date_metadata_modified_type': 'Created',
+        'date_created': self.t0.isoformat(),
+        'history': f'{self.t0.isoformat()}: Converted from SAFE to NetCDF by NBS team.',
+        'title': self.product_id,
+        'orbit_number': root.find('.//safe:orbitNumber', namespaces=root.nsmap).text,
+        'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
+        'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION"),
+        'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
+        'product_type': self.globalAttribs.pop("PRODUCT_TYPE"),
+        'id': self.uuid,
+        'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
+        'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
+        'geospatial_bounds': self.globalAttribs.pop('FOOTPRINT'),
+        'geospatial_lon_min': box[0],
+        'geospatial_lat_min': box[1],
+        'geospatial_lon_max': box[2],
+        'geospatial_lat_max': box[3],
+    })
+
+    return
 
 
 # Add function to clean work files?
