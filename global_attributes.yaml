@@ -42,8 +42,8 @@ S1:
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-1'
   iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
-  keywords: 'GCMDK:Earth Science &gt; Spectral/Engineering &gt; RADAR &gt; RADAR backscatter,GCMDK:Earth Science &gt; Spectral/Engineering &gt; RADAR &gt; RADAR imagery,GCMDK:Earth Science &gt; Spectral/Engineering &gt; Microwave &gt; Microwave imagery,GEMET:Orthoimagery,GEMET:Land cover,GEMET:Oceanographic geographical features'
-  keywords_vocabulary: 'GCMDK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+  keywords: 'GCMDSK:Earth Science > Spectral/Engineering > RADAR > RADAR backscatter,GCMDSK:Earth Science > Spectral/Engineering > RADAR > RADAR imagery,GCMDSK:Earth Science > Spectral/Engineering > Microwave > Microwave imagery,GEMET:Orthoimagery,GEMET:Land cover,GEMET:Oceanographic geographical features'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
   Conventions: 'CF-1.6,ACDD-1.3'
 
 # Sentinel 2
@@ -53,8 +53,8 @@ S2:
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-2'
   iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
-  keywords: 'GCMDK:Earth Science &gt; Atmosphere &gt; Atmospheric radiation &gt; Reflectance,GEMET:Orthoimagery,GEMET:Land cover'
-  keywords_vocabulary: 'GCMDK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+  keywords: 'GCMDSK:Earth Science > Atmosphere > Atmospheric radiation > Reflectance,GEMET:Orthoimagery,GEMET:Land cover'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
   Conventions: 'CF-1.6, ACDD-1.3'
 
 # Platform
