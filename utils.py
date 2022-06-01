@@ -255,9 +255,9 @@ def get_global_attributes(self):
     if satellite.startswith('S2'):
         polygon = shapely.wkt.loads(self.globalAttribs.pop('FOOTPRINT'))
         self.globalAttribs.update({
-            'orbit_number': root.find('.//safe:orbitNumber', namespaces=root.nsmap).text,
+            'orbit_number': int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text),
             'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
-            'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION"),
+            'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION").lower(),
             'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
             'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
             'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
@@ -273,8 +273,9 @@ def get_global_attributes(self):
         # and lastly need to reverse lat-lon
         polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
         self.globalAttribs.update({
-            'orbit_number': self.globalAttribs.pop("ORBIT_NUMBER"),
-            'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION"),
+            'orbit_number': int(self.globalAttribs.pop("ORBIT_NUMBER")),
+            'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION").lower(),
+            'relative_orbit_number': root.find('.//safe:relativeOrbitNumber', namespaces=root.nsmap).text,
             'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME'),
             'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME'),
             'mode': self.globalAttribs.pop('MODE')
