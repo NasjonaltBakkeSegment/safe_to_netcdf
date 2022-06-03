@@ -20,7 +20,7 @@ import pathlib
 import sys
 import math
 from collections import defaultdict
-from datetime import datetime
+import datetime as dt
 import lxml.etree as ET
 import netCDF4
 import numpy as np
@@ -63,7 +63,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.imageFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = datetime.now(dt.timezone.utc)
+        self.t0 = dt.datetime.now(dt.timezone.utc)
         self.ncout = None  # NetCDF output file
         self.reference_band = None
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C

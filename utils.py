@@ -44,7 +44,7 @@ def memory_use(start_time):
     """
     logger.debug(f"Memory usage so far: "
           f"{float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000} Gb")
-    logger.debug(dt.datetime.now() - start_time)
+    logger.debug(dt.datetime.now(dt.timezone.utc) - start_time)
 
 
 def seconds_from_ref(t, t_ref):
@@ -241,9 +241,9 @@ def get_global_attributes(self):
 
     # Product specific metadata
     self.globalAttribs.update({
-        'date_metadata_modified': self.t0.isoformat(),
+        'date_metadata_modified': self.t0.isoformat().replace("+00:00", "Z"),
         'date_metadata_modified_type': 'Created',
-        'date_created': self.t0.isoformat(),
+        'date_created': self.t0.isoformat().replace("+00:00", "Z"),
         'history': f'{self.t0.isoformat()}: Converted from SAFE to NetCDF by NBS team.',
         'title': self.product_id,
         'id': self.uuid,
