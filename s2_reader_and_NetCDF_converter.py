@@ -63,7 +63,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.imageFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = datetime.now()
+        self.t0 = datetime.now(dt.timezone.utc)
         self.ncout = None  # NetCDF output file
         self.reference_band = None
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C

@@ -51,7 +51,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.xmlFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = datetime.now()
+        self.t0 = datetime.now(dt.timezone.utc)
         self.ncout = None  # NetCDF output file
         self.xmlCalPixelLines = defaultdict(list)
         self.xmlCalLUTs = defaultdict(list)
