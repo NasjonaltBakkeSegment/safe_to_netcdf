@@ -276,8 +276,8 @@ def get_global_attributes(self):
             'orbit_number': int(self.globalAttribs.pop("ORBIT_NUMBER")),
             'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION").lower(),
             'relative_orbit_number': root.find('.//safe:relativeOrbitNumber', namespaces=root.nsmap).text,
-            'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME'),
-            'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME'),
+            'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME')+'Z',
+            'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME')+'Z',
             'mode': self.globalAttribs.pop('MODE')
         })
 
