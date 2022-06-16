@@ -87,10 +87,13 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # 3) Read sun and view angles
         logger.info('Read view and sun angles')
-        if not self.dterrengdata:
-            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
-        else:
+
+        if self.dterrengdata:
             currXml = self.xmlFiles.get('MTD_TL', None)
+        elif "_N0207_" in self.product_id:
+            currXml = self.xmlFiles['S2_{}_Tile1_Data'.format(self.processing_level)]
+        else:
+            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
         # Check for both None and empty list
         if currXml is None or not currXml:
             logger.error("xml file not found in SAFE directory. Hence exiting")
