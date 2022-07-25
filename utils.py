@@ -255,13 +255,18 @@ def get_global_attributes(self):
     if satellite.startswith('S2'):
         polygon = shapely.wkt.loads(self.globalAttribs.pop('FOOTPRINT'))
         self.globalAttribs.update({
-            'orbit_number': int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text),
             'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
             'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION").lower(),
             'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
             'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
             'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
         })
+        try:
+            self.globalAttribs['orbit_number'] = int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text)
+        except SyntaxError as e:
+            logger.warning('Unable to get orbit number from SAFE archive')
+            logger.warning(e)
+
 
     elif satellite.startswith('S1'):
         # Get coordinates from manifest
