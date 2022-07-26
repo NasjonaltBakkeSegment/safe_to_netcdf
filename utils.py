@@ -261,12 +261,10 @@ def get_global_attributes(self):
             'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
             'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
         })
-        try:
+        if self.dterrengdata:
+            self.globalAttribs['orbit_number'] = int(self.globalAttribs['DATATAKE_1_ID'].split('_')[2])
+        else:
             self.globalAttribs['orbit_number'] = int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text)
-        except SyntaxError as e:
-            logger.warning('Unable to get orbit number from SAFE archive')
-            logger.warning(e)
-
 
     elif satellite.startswith('S1'):
         # Get coordinates from manifest
