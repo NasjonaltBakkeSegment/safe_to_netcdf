@@ -233,18 +233,6 @@ def get_global_attributes(self):
     # Platform specific metadata (S1A, S1B, S2A, S2B, ...)
     self.globalAttribs.update(all[satellite])
 
-    # todo: think about that
-    # maybe just leave it at None? For now, better like that to be able to test nc2mmd
-    if self.uuid is None:
-        logger.warning('uuid not found so created a new one.')
-        self.uuid = str(uuid.uuid4())
-
-    # Product level specific metadata
-    # (S2-Level2A, ...)
-    # -> can be empty
-    # does not seem to be necessary
-    #self.globalAttribs.update(all.get('_'.join([satellite[0:2], self.processing_level])))
-
     # Product specific metadata
     self.globalAttribs.update({
         'date_metadata_modified': self.t0.isoformat().replace("+00:00", "Z"),
@@ -255,6 +243,11 @@ def get_global_attributes(self):
         'id': self.uuid,
         'product_type': self.globalAttribs.pop("PRODUCT_TYPE"),
     })
+
+    # If no uuid provided, no id attribute at all
+    if self.uuid is None:
+        logger.warning('uuid not found, so no id attribute in the nc global attributes')
+        self.globalAttribs.pop('id')
 
     root = xml_read(self.mainXML)
 
@@ -273,14 +266,6 @@ def get_global_attributes(self):
             self.globalAttribs['orbit_number'] = int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text)
 
     elif satellite.startswith('S1'):
-        # Get coordinates from manifest
-        coords = root.find('.//gml:coordinates', namespaces=root.nsmap).text
-        # Necessary to do some formatting to be able to read with shapely,
-        # and to close the polygon by adding the first point at the end
-        formatted = coords.replace(' ', ';').replace(',', ' ').replace(';', ', ')
-        footprint = f"POLYGON(({','.join([formatted, formatted.split(',')[0]])}))"
-        # and lastly need to reverse lat-lon
-        polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
         self.globalAttribs.update({
             'orbit_number': int(self.globalAttribs.pop("ORBIT_NUMBER")),
             'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION").lower(),
@@ -289,6 +274,15 @@ def get_global_attributes(self):
             'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME')+'Z',
             'mode': self.globalAttribs.pop('MODE')
         })
+        # Some work is necessary to get the polygon:
+        # - get coordinates from manifest
+        coords = root.find('.//gml:coordinates', namespaces=root.nsmap).text
+        # - format to be shapely compliant
+        # - close the polygon by adding the first point at the end
+        formatted = coords.replace(' ', ';').replace(',', ' ').replace(';', ', ')
+        footprint = f"POLYGON(({','.join([formatted, formatted.split(',')[0]])}))"
+        # - reverse lat-lon
+        polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
 
     # Add bounding box and polygon
     box = polygon.bounds
@@ -299,12 +293,9 @@ def get_global_attributes(self):
         'geospatial_lat_max': box[3],
     })
 
-    # Add SIOS in collection if > 70
-    # todo for both S1 and S2 ? check with Trygve?
+    # Add SIOS in collection if latitude > 70
     if box[3] > 70:
         self.globalAttribs['collection'] += ',SIOS'
 
     return
 
-
-# Add function to clean work files?
