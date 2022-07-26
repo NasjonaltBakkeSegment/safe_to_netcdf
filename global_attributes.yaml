@@ -32,7 +32,6 @@ global:
   storage_information: 'NetCDF-CF'
   spatial_representation: 'grid'
   source: 'Space Borne Instrument'
-  # todo: add to DMH?
   geospatial_bounds_crs: 'EPSG:4326'
 
 # Sentinel 1
