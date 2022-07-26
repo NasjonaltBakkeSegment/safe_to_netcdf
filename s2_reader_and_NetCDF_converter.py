@@ -88,11 +88,15 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # 3) Read sun and view angles
         logger.info('Read view and sun angles')
-        if not self.dterrengdata:
-            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
-        else:
+
+        if self.dterrengdata:
             currXml = self.xmlFiles.get('MTD_TL', None)
-        if currXml is None:
+        elif "_N0207_" in self.product_id:
+            currXml = self.xmlFiles['S2_{}_Tile1_Data'.format(self.processing_level)]
+        else:
+            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
+        # Check for both None and empty list
+        if currXml is None or not currXml:
             logger.error("xml file not found in SAFE directory. Hence exiting")
             self.read_ok = False
             return False
@@ -744,15 +748,18 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    #workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated')
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
     workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_attributes/S2_N0400')
+    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated_prod')
 
     products = [
         'S2B_MSIL1C_20211010T105859_N0301_R094_T29QND_20211010T131714',
         'S2B_MSIL1C_20211010T105859_N7990_R094_T29QND_20211117T185835',
         'S2B_MSIL2A_20211010T105859_N0301_R094_T29QND_20211010T141305',
         'S2B_MSIL2A_20211010T105859_N7990_R094_T29QND_20211117T202959']
+
+    products = ['S2A_MSIL2A_20180428T104021_N0207_R008_T32VPL_20180428T125712']
+
 
     ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
 
@@ -766,7 +773,8 @@ if __name__ == '__main__':
             product=product,
             indir=workdir / product,
             outdir=outdir)
-        conversion_object.write_to_NetCDF(outdir, 7)
+        if conversion_object.read_ok:
+            conversion_object.write_to_NetCDF(outdir, 7)
 
 
 
