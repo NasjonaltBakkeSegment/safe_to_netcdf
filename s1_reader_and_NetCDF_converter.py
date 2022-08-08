@@ -310,6 +310,9 @@ class Sentinel1_reader_and_NetCDF_converter:
         utils.memory_use(self.t0)
 
         lat, lon = self.genLatLon_regGrid()  # Assume gcps are on a regular grid
+        if lat is None and lon is None:
+            logger.error('Exiting.')
+            return False
         nclat.long_name = 'latitude'
         nclat.units = 'degrees_north'
         nclat.standard_name = 'latitude'
@@ -772,10 +775,15 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         xi = list(range(0, xsize))
         yi = list(range(0, ysize))
-        tck = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
-        latitude = tck(yi, xi)
-        tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
-        longitude = tck(yi, xi)
+        try:
+            tck = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
+            latitude = tck(yi, xi)
+            tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
+            longitude = tck(yi, xi)
+        except ValueError as e:
+            logger.error('Unable to compute lat-lon.')
+            logger.error(e)
+            return None, None
 
         del lat
         del lon
@@ -1072,15 +1080,18 @@ if __name__ == '__main__':
     # Noise matrix pb
     products = ['S1A_EW_GRDH_1SDH_20201023T180210_20201023T180420_034927_0412AD_4F16']
 
-    #products = ['S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
+    # Latlon pb
+    products = ['S1A_IW_GRDH_1SDV_20220410T055329_20220410T055423_042707_05189B_3794']
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 'bugfix_noise_02' / product
+        outdir = workdir / 'NBS_test_data' / 's1_latlon' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / 'NBS_test_data' / 'zips',
+            #indir=workdir / 'NBS_test_data' / 'zips',
             #indir=workdir / 'NBS_reference_data' / 'reference_datain_local',
+            indir=outdir,
             outdir=outdir)
-        conversion_object.write_to_NetCDF(outdir, 7)
+        if conversion_object:
+            conversion_object.write_to_NetCDF(outdir, 7)
