@@ -717,17 +717,9 @@ class Sentinel2_reader_and_NetCDF_converter:
         yp = np.int32(uly - (yres * 0.5)) + indices[0] * np.int32(yres) + indices[0] * np.int32(
             yskew)
 
-        source = osr.SpatialReference()
-        source.ImportFromWkt(self.reference_band.GetProjection())
-        target = osr.SpatialReference()
-        # target.ImportFromEPSG(4326)
-        target.ImportFromProj4('+proj=longlat +ellps=WGS84')
-
-        current_projection = pyproj.Proj(source.ExportToProj4())
-        target_projection = pyproj.Proj(target.ExportToProj4())
-        target2 = current_projection.to_latlong()
-
-        longitude, latitude = pyproj.transform(current_projection, target_projection, xp, yp)
+        current_projection = pyproj.CRS.from_string(self.reference_band.GetProjection())
+        target_projection = pyproj.CRS.from_proj4('+proj=longlat +ellps=WGS84')
+        longitude, latitude = pyproj.Transformer.from_crs(current_projection, target_projection).transform(xp, yp)
 
         return latitude, longitude
 
@@ -765,7 +757,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-
     # Log to console
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
@@ -775,18 +766,9 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated_prod')
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
-    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/production/products_being_processed')
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
 
-    products = [
-        'S2B_MSIL1C_20211010T105859_N0301_R094_T29QND_20211010T131714',
-        'S2B_MSIL1C_20211010T105859_N7990_R094_T29QND_20211117T185835',
-        'S2B_MSIL2A_20211010T105859_N0301_R094_T29QND_20211010T141305',
-        'S2B_MSIL2A_20211010T105859_N7990_R094_T29QND_20211117T202959']
-
-    products = ['S2A_MSIL2A_20180428T104021_N0207_R008_T32VPL_20180428T125712']
-
-
-    ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
+    products = ['S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616']
 
     for product in products:
 
