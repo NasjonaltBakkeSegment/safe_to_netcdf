@@ -768,6 +768,12 @@ class Sentinel1_reader_and_NetCDF_converter:
                 x.append(gcp.GCPPixel)
             lon.append(gcp.GCPX)
             lat.append(gcp.GCPY)
+
+        if not (len(x) * len(y) == len(lat)):
+            logger.warning('Something odd with lat-lon, so we are cheating')
+            lon.append(lon[-1])
+            lat.append(lat[-1])
+
         x = np.array(x, np.int32)
         y = np.array(y, np.int32)
         lat = np.array(lat, np.float32)
@@ -1072,7 +1078,8 @@ class Sentinel1_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS')
+    #workdir = pathlib.path('/home/elodief/data/nbs')
+    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment')
 
     products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
                 'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
@@ -1085,7 +1092,7 @@ if __name__ == '__main__':
 
     for product in products:
 
-        outdir = workdir / 'NBS_test_data' / 's1_latlon' / product
+        outdir = workdir / 's1_latlon' / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
