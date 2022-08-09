@@ -1064,10 +1064,17 @@ class Sentinel1_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
+    # Log to console
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    log_info = logging.StreamHandler(sys.stdout)
+    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(log_info)
+
+
     workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
 
-    # Noise matrix pb
-    products = ['S1A_EW_GRDH_1SDH_20220809T063141_20220809T063345_044472_054E93_DF17']
+    products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79']
 
     for product in products:
 
