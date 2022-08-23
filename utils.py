@@ -137,6 +137,23 @@ def initializer(self):
         logger.info('Fixing paths for baseline N0207')
         for i,f in self.xmlFiles.items():
             self.xmlFiles[i] = pathlib.Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
+    elif '_N0208_' in self.product_id:
+        logger.info('Fixing paths for baseline N0208')
+        for i, f in self.xmlFiles.items():
+            if 'wp_in_progress' in str(f):
+                tmp1 = str(f).split('.SAFE')
+                try:
+                    tmp2 = str(f).split('GRANULE')
+                    self.xmlFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
+                except IndexError:
+                    tmp2 = str(f).split('DATASTRIP')
+                    self.xmlFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/DATASTRIP' + tmp2[1])
+        for i, f in self.imageFiles.items():
+            if 'wp_in_progress' in str(f):
+                tmp1 = str(f).split('.SAFE')
+                if 'GRANULE' in str(f):
+                    tmp2 = str(f).split('GRANULE')
+                    self.imageFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
 
     # Set gdal object
     if sat == 'S2' and not self.dterrengdata:
