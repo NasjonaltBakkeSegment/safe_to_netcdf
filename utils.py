@@ -10,8 +10,13 @@ from osgeo import gdal
 import subprocess as sp
 import zipfile
 import logging
+import yaml
+from pkg_resources import resource_string
+import uuid
+import shapely.wkt, shapely.ops
 
 logger = logging.getLogger(__name__)
+
 
 def xml_read(xml_file):
     """
@@ -39,7 +44,7 @@ def memory_use(start_time):
     """
     logger.debug(f"Memory usage so far: "
           f"{float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000} Gb")
-    logger.debug(dt.datetime.now() - start_time)
+    logger.debug(dt.datetime.now(dt.timezone.utc) - start_time)
 
 
 def seconds_from_ref(t, t_ref):
@@ -215,4 +220,99 @@ def uncompress(self):
     self.mainXML = xmlFile
     return True
 
-# Add function to clean work files?
+
+def read_yaml(file):
+    """
+    Read yaml file
+    """
+    return yaml.load(
+        resource_string(
+            globals()['__name__'].split('.')[0], file
+        ), Loader=yaml.FullLoader
+    )
+
+
+def get_global_attributes(self):
+    """
+    Add global attributes to netcdf file
+    """
+
+    all = read_yaml('global_attributes.yaml')
+
+    satellite = self.product_id[0:3]
+
+    # NBS project metadata
+    self.globalAttribs.update(all['global'])
+
+    # Satellite specific metadata (S1, S2, S3)
+    self.globalAttribs.update(all[satellite[0:2]])
+
+    # Platform specific metadata (S1A, S1B, S2A, S2B, ...)
+    self.globalAttribs.update(all[satellite])
+
+    # Product specific metadata
+    self.globalAttribs.update({
+        'date_metadata_modified': self.t0.isoformat().replace("+00:00", "Z"),
+        'date_metadata_modified_type': 'Created',
+        'date_created': self.t0.isoformat().replace("+00:00", "Z"),
+        'history': f'{self.t0.isoformat()}: Converted from SAFE to NetCDF by NBS team.',
+        'title': self.product_id,
+        'id': self.uuid,
+        'product_type': self.globalAttribs.pop("PRODUCT_TYPE"),
+    })
+
+    # If no uuid provided, no id attribute at all
+    if self.uuid is None:
+        logger.warning('uuid not found, so no id attribute in the nc global attributes')
+        self.globalAttribs.pop('id')
+
+    root = xml_read(self.mainXML)
+
+    if satellite.startswith('S2'):
+        polygon = shapely.wkt.loads(self.globalAttribs.pop('FOOTPRINT'))
+        self.globalAttribs.update({
+            'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
+            'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION").lower(),
+            'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
+            'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
+            'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
+        })
+        if self.dterrengdata:
+            self.globalAttribs['orbit_number'] = int(self.globalAttribs['DATATAKE_1_ID'].split('_')[2])
+        else:
+            self.globalAttribs['orbit_number'] = int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text)
+
+    elif satellite.startswith('S1'):
+        self.globalAttribs.update({
+            'orbit_number': int(self.globalAttribs.pop("ORBIT_NUMBER")),
+            'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION").lower(),
+            'relative_orbit_number': root.find('.//safe:relativeOrbitNumber', namespaces=root.nsmap).text,
+            'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME')+'Z',
+            'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME')+'Z',
+            'mode': self.globalAttribs.pop('MODE')
+        })
+        # Some work is necessary to get the polygon:
+        # - get coordinates from manifest
+        coords = root.find('.//gml:coordinates', namespaces=root.nsmap).text
+        # - format to be shapely compliant
+        # - close the polygon by adding the first point at the end
+        formatted = coords.replace(' ', ';').replace(',', ' ').replace(';', ', ')
+        footprint = f"POLYGON(({','.join([formatted, formatted.split(',')[0]])}))"
+        # - reverse lat-lon
+        polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
+
+    # Add bounding box and polygon
+    box = polygon.bounds
+    self.globalAttribs.update({
+        'geospatial_lon_min': box[0],
+        'geospatial_lat_min': box[1],
+        'geospatial_lon_max': box[2],
+        'geospatial_lat_max': box[3],
+    })
+
+    # Add SIOS in collection if latitude > 70
+    if box[3] > 70:
+        self.globalAttribs['collection'] += ',SIOS'
+
+    return
+

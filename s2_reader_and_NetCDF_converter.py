@@ -20,7 +20,7 @@ import pathlib
 import sys
 import math
 from collections import defaultdict
-from datetime import datetime
+import datetime as dt
 import lxml.etree as ET
 import netCDF4
 import numpy as np
@@ -53,7 +53,8 @@ class Sentinel2_reader_and_NetCDF_converter:
         SAFE_outpath -- output storage location for unzipped SAFE product
         '''
 
-    def __init__(self, product, indir, outdir):
+    def __init__(self, product, indir, outdir, colhub_uuid=None):
+        self.uuid = colhub_uuid
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
@@ -62,7 +63,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.imageFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = datetime.now()
+        self.t0 = dt.datetime.now(dt.timezone.utc)
         self.ncout = None  # NetCDF output file
         self.reference_band = None
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C
@@ -493,42 +494,17 @@ class Sentinel2_reader_and_NetCDF_converter:
 
                 nc_orb[0,:] = [int(rel_orb_nb),int(orb_nb),platform_id[platform]]
 
-
             # Add global attributes
             ##########################################################
             # Status
             logger.info('Adding global attributes')
             utils.memory_use(self.t0)
 
-            nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
-            ncout.title = 'Sentinel-2 {} data'.format(self.processing_level)
-            ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-            ncout.file_creation_date = nowstr
-
-            self.globalAttribs['Conventions'] = "CF-1.6"
-            self.globalAttribs[
-                'summary'] = 'Sentinel-2 Multi-Spectral Instrument {} product.'.format(
-                self.processing_level)
-            self.globalAttribs[
-                'keywords'] = '[Earth Science, Atmosphere, Atmospheric radiation, Reflectance]'
-            self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-            self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
-            self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-            self.globalAttribs['source'] = "surface observation"
-            root = utils.xml_read(self.mainXML)
-            if not self.dterrengdata:
-                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
-                                                              namespaces=root.nsmap).text
-            # Commented out to be stricly identical to older SAFE2NC version in production
-            #else:
-            #    self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
-
-            self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop(
-                'DATATAKE_1_SENSING_ORBIT_NUMBER')
+            utils.get_global_attributes(self)
             ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
-            # Status
+            ### Status
             logger.info('Finished.')
             utils.memory_use(self.t0)
 
@@ -764,11 +740,10 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated_prod')
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
+    products = ['S2A_MSIL2A_20180428T104021_N0207_R008_T32VPL_20180428T125712']
 
-    products = ['S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616']
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
 
     for product in products:
 
