@@ -56,6 +56,7 @@ class Sentinel2_reader_and_NetCDF_converter:
     def __init__(self, product, indir, outdir):
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
+        self.baseline = self.product_id.split('_')[3]
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
         self.xmlFiles = defaultdict(list)
@@ -90,7 +91,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         if self.dterrengdata:
             currXml = self.xmlFiles.get('MTD_TL', None)
-        elif "_N0207_" in self.product_id:
+        elif self.baseline == "N0207":
             currXml = self.xmlFiles['S2_{}_Tile1_Data'.format(self.processing_level)]
         else:
             currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
@@ -765,7 +766,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-
     # Log to console
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
@@ -775,18 +775,9 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated_prod')
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
-    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/production/products_being_processed')
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
 
-    products = [
-        'S2B_MSIL1C_20211010T105859_N0301_R094_T29QND_20211010T131714',
-        'S2B_MSIL1C_20211010T105859_N7990_R094_T29QND_20211117T185835',
-        'S2B_MSIL2A_20211010T105859_N0301_R094_T29QND_20211010T141305',
-        'S2B_MSIL2A_20211010T105859_N7990_R094_T29QND_20211117T202959']
-
-    products = ['S2A_MSIL2A_20180428T104021_N0207_R008_T32VPL_20180428T125712']
-
-
-    ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
+    products = ['S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616']
 
     for product in products:
 

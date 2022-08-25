@@ -128,7 +128,7 @@ def initializer(self):
                     self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
 
     # Baseline N0207 for S2L2A products has typos in paths
-    if '_N0207_' in self.product_id:
+    if self.baseline == 'N0207':
         logger.info('Fixing paths for baseline N0207')
         for i,f in self.xmlFiles.items():
             self.xmlFiles[i] = pathlib.Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
