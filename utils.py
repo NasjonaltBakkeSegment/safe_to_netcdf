@@ -146,6 +146,14 @@ def initializer(self):
     # Set global metadata attributes from gdal
     self.globalAttribs = self.src.GetMetadata()
 
+    if self.baseline == 'N0400':
+        logger.debug('Adding offset parameters for N0400')
+        root_offset = xml_read(gdalFile)
+        if self.processing_level == 'Level-2A':
+            self.globalAttribs['BOA_ADD_OFFSET'] = root_offset.find('.//BOA_ADD_OFFSET').text
+        elif self.processing_level == 'Level-1C':
+            self.globalAttribs['RADIO_ADD_OFFSET'] = root_offset.find('.//RADIO_ADD_OFFSET').text
+
     if sat == 'S1':
         # Set raster size parameters
         self.xSize = self.src.RasterXSize
