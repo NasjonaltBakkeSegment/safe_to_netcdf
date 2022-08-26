@@ -127,12 +127,6 @@ def initializer(self):
                 if ftype == 'text/xml' and href:
                     self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
 
-    # Baseline N0207 for S2L2A products has typos in paths
-    if self.baseline == 'N0207':
-        logger.info('Fixing paths for baseline N0207')
-        for i,f in self.xmlFiles.items():
-            self.xmlFiles[i] = pathlib.Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
-
     # Set gdal object
     if sat == 'S2' and not self.dterrengdata:
         gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
@@ -146,15 +140,22 @@ def initializer(self):
     # Set global metadata attributes from gdal
     self.globalAttribs = self.src.GetMetadata()
 
-    if self.baseline == 'N0400':
-        logger.debug('Adding offset parameters for N0400')
-        root_offset = xml_read(gdalFile)
-        if self.processing_level == 'Level-2A':
-            self.globalAttribs['BOA_ADD_OFFSET'] = root_offset.find('.//BOA_ADD_OFFSET').text
-        elif self.processing_level == 'Level-1C':
-            self.globalAttribs['RADIO_ADD_OFFSET'] = root_offset.find('.//RADIO_ADD_OFFSET').text
+    if sat == 'S2':
+        # Offset parameters for N0400 baseline, for both L1C and L2A products
+        if self.baseline == 'N0400':
+            logger.debug('Adding offset parameters for N0400')
+            root_offset = xml_read(gdalFile)
+            if self.processing_level == 'Level-2A':
+                self.globalAttribs['BOA_ADD_OFFSET'] = root_offset.find('.//BOA_ADD_OFFSET').text
+            elif self.processing_level == 'Level-1C':
+                self.globalAttribs['RADIO_ADD_OFFSET'] = root_offset.find('.//RADIO_ADD_OFFSET').text
+        # Baseline N0207 for S2L2A products has typos in paths
+        elif self.baseline == 'N0207':
+            logger.info('Fixing paths for baseline N0207')
+            for i,f in self.xmlFiles.items():
+                self.xmlFiles[i] = pathlib.Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
 
-    if sat == 'S1':
+    elif sat == 'S1':
         # Set raster size parameters
         self.xSize = self.src.RasterXSize
         self.ySize = self.src.RasterYSize
