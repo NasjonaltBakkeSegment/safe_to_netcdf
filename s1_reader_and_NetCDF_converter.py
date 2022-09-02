@@ -914,8 +914,8 @@ class Sentinel1_reader_and_NetCDF_converter:
                     lastRangeSample = int(values[3])
                     # line = np.array(values[4].split(),int)
                     # noiseAzimuthLUT = np.array(values[5].split(),float)
-                    noiseAzimuthVectorStart = t0 + timedelta(seconds=firstAzimuthLine * delta_ts)
-                    noiseAzimuthVectorStop = t0 + timedelta(seconds=lastAzimuthLine * delta_ts)
+                    noiseAzimuthVectorStart = t0 + dt.timedelta(seconds=firstAzimuthLine * delta_ts)
+                    noiseAzimuthVectorStop = t0 + dt.timedelta(seconds=lastAzimuthLine * delta_ts)
                     if not currentSwathStartTime:
                         currentSwathStartTime = noiseAzimuthVectorStart
                     else:
