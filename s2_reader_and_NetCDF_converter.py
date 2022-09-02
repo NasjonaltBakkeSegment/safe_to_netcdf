@@ -57,6 +57,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.uuid = colhub_uuid
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
+        self.baseline = self.product_id.split('_')[3]
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
         self.xmlFiles = defaultdict(list)
@@ -91,7 +92,7 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         if self.dterrengdata:
             currXml = self.xmlFiles.get('MTD_TL', None)
-        elif "_N0207_" in self.product_id:
+        elif self.baseline == "N0207":
             currXml = self.xmlFiles['S2_{}_Tile1_Data'.format(self.processing_level)]
         else:
             currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
@@ -741,9 +742,8 @@ if __name__ == '__main__':
     logger.addHandler(log_info)
 
     #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
-    products = ['S2A_MSIL2A_20180428T104021_N0207_R008_T32VPL_20180428T125712']
-
     workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
+    products = ['S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616']
 
     for product in products:
 
