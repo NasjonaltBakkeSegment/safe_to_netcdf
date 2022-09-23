@@ -12,13 +12,12 @@
 
 import sys
 from collections import defaultdict
-import datetime as dt
-import pytz
 import netCDF4
 import numpy as np
-from scipy import interpolate
 import pathlib
-from safe_to_netcdf import utils
+from scipy import interpolate
+import datetime as dt
+import safe_to_netcdf.utils as utils
 import logging
 
 
@@ -39,7 +38,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         SAFE_outpath -- output storage location for unzipped SAFE product
     """
 
-    def __init__(self, product, indir, outdir):
+    def __init__(self, product, indir, outdir, colhub_uuid=None):
+        self.uuid = colhub_uuid
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
@@ -50,7 +50,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.xmlFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = dt.datetime.now(tz=pytz.utc)
+        self.t0 = dt.datetime.now(dt.timezone.utc)
         self.ncout = None  # NetCDF output file
         self.xmlCalPixelLines = defaultdict(list)
         self.xmlCalLUTs = defaultdict(list)
@@ -517,25 +517,9 @@ class Sentinel1_reader_and_NetCDF_converter:
         logger.info('Adding global attributes')
         utils.memory_use(self.t0)
 
-        nowstr = self.t0.strftime("%Y-%m-%dT%H:%M:%SZ")
-        ncout.title = 'Sentinel-1 GRD data'
-        ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-        ncout.file_creation_date = nowstr
-
-        self.globalAttribs['Conventions'] = "CF-1.8"
-        self.globalAttribs['summary'] = 'Sentinel-1 C-band SAR GRD product.'
-        self.globalAttribs[
-            'keywords'] = '[Earth Science, Spectral/Engineering, RADAR, RADAR backscatter], ' \
-                          '[Earth Science, Spectral/Engineering, RADAR, RADAR imagery], ' \
-                          '[Earth Science, Spectral/Engineering, Microwave, Microwave Imagery]'
-        self.globalAttribs['keywords_vocabulary'] = "GCMD Science Keywords"
-        self.globalAttribs['institution'] = "Norwegian Meteorological Institute"
-        self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-
+        utils.get_global_attributes(self)
         ncout.setncatts(self.globalAttribs)
         ncout.sync()
-
-        # self.ncout = ncout
 
         # Status
         ncout.close()
@@ -899,7 +883,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
             polarisation -- polarisation
         """
-        t0_duration = dt.datetime.now()
+        t0_duration = dt.datetime.now(dt.timezone.utc)
         imageAnnotation = self.imageAnnotation[polarisation]
 
         old_convention = False
@@ -1057,20 +1041,22 @@ class Sentinel1_reader_and_NetCDF_converter:
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 
         noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
-        delta = dt.datetime.now() - t0_duration
+        delta = dt.datetime.now(dt.timezone.utc) - t0_duration
         logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
 
 
 if __name__ == '__main__':
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS')
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
+    # Log to console
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    log_info = logging.StreamHandler(sys.stdout)
+    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(log_info)
 
-    products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79',
-                'S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
-
-    products = ['S1B_EW_GRDM_1SDH_20201029T081927_20201029T082027_024025_02DAA1_4926']
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/merge')
+    products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79']
 
     for product in products:
 
@@ -1078,6 +1064,6 @@ if __name__ == '__main__':
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel1_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / product,
+            indir=outdir,
             outdir=outdir)
         conversion_object.write_to_NetCDF(outdir, 7)

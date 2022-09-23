@@ -1,16 +1,18 @@
 """
-Tools
+Tools -
 """
 
 import pathlib
 import lxml.etree as ET
 import datetime as dt
-import pytz
 import resource
 from osgeo import gdal
 import subprocess as sp
 import zipfile
 import logging
+import yaml
+from pkg_resources import resource_string
+import shapely.wkt, shapely.ops
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ def memory_use(start_time):
     """
     logger.debug(f"Memory usage so far: "
           f"{float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1000000} Gb")
-    logger.debug(dt.datetime.now(tz=pytz.utc) - start_time)
+    logger.debug(dt.datetime.now(dt.timezone.utc) - start_time)
 
 
 def seconds_from_ref(t, t_ref):
@@ -140,7 +142,40 @@ def initializer(self):
     # Set global metadata attributes from gdal
     self.globalAttribs = self.src.GetMetadata()
 
-    if sat == 'S1':
+    if sat == 'S2':
+        # Offset parameters for N0400 baseline, for both L1C and L2A products
+        if self.baseline == 'N0400':
+            logger.info('Adding offset parameters for N0400')
+            root_offset = xml_read(gdalFile)
+            if self.processing_level == 'Level-2A':
+                self.globalAttribs['BOA_ADD_OFFSET'] = root_offset.find('.//BOA_ADD_OFFSET').text
+            elif self.processing_level == 'Level-1C':
+                self.globalAttribs['RADIO_ADD_OFFSET'] = root_offset.find('.//RADIO_ADD_OFFSET').text
+        # Baseline N0208 for S2L2A products has typos in paths
+        elif self.baseline == '_N0208_':
+            logger.info('Fixing paths for baseline N0208')
+            for i, f in self.xmlFiles.items():
+                if 'wp_in_progress' in str(f):
+                    tmp1 = str(f).split('.SAFE')
+                    try:
+                        tmp2 = str(f).split('GRANULE')
+                        self.xmlFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
+                    except IndexError:
+                        tmp2 = str(f).split('DATASTRIP')
+                        self.xmlFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/DATASTRIP' + tmp2[1])
+            for i, f in self.imageFiles.items():
+                if 'wp_in_progress' in str(f):
+                    tmp1 = str(f).split('.SAFE')
+                    if 'GRANULE' in str(f):
+                        tmp2 = str(f).split('GRANULE')
+                        self.imageFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
+        # Baseline N0207 for S2L2A products has typos in paths
+        elif self.baseline == 'N0207':
+            logger.info('Fixing paths for baseline N0207')
+            for i,f in self.xmlFiles.items():
+                self.xmlFiles[i] = pathlib.Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
+
+    elif sat == 'S1':
         # Set raster size parameters
         self.xSize = self.src.RasterXSize
         self.ySize = self.src.RasterYSize
@@ -187,11 +222,106 @@ def uncompress(self):
     self.mainXML = xmlFile
     return True
 
-# Add function to clean work files?
+
+def read_yaml(file):
+    """
+    Read yaml file
+    """
+    return yaml.load(
+        resource_string(
+            globals()['__name__'].split('.')[0], file
+        ), Loader=yaml.FullLoader
+    )
+
+
+def get_global_attributes(self):
+    """
+    Add global attributes to netcdf file
+    """
+
+    all = read_yaml('global_attributes.yaml')
+
+    satellite = self.product_id[0:3]
+
+    # NBS project metadata
+    self.globalAttribs.update(all['global'])
+
+    # Satellite specific metadata (S1, S2, S3)
+    self.globalAttribs.update(all[satellite[0:2]])
+
+    # Platform specific metadata (S1A, S1B, S2A, S2B, ...)
+    self.globalAttribs.update(all[satellite])
+
+    # Product specific metadata
+    self.globalAttribs.update({
+        'date_metadata_modified': self.t0.isoformat().replace("+00:00", "Z"),
+        'date_metadata_modified_type': 'Created',
+        'date_created': self.t0.isoformat().replace("+00:00", "Z"),
+        'history': f'{self.t0.isoformat()}: Converted from SAFE to NetCDF by NBS team.',
+        'title': self.product_id,
+        'id': self.uuid,
+        'product_type': self.globalAttribs.pop("PRODUCT_TYPE"),
+    })
+
+    # If no uuid provided, no id attribute at all
+    if self.uuid is None:
+        logger.warning('uuid not found, so no id attribute in the nc global attributes')
+        self.globalAttribs.pop('id')
+
+    root = xml_read(self.mainXML)
+
+    if satellite.startswith('S2'):
+        polygon = shapely.wkt.loads(self.globalAttribs.pop('FOOTPRINT'))
+        self.globalAttribs.update({
+            'relative_orbit_number': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_NUMBER"),
+            'orbit_direction': self.globalAttribs.pop("DATATAKE_1_SENSING_ORBIT_DIRECTION").lower(),
+            'cloud_coverage': self.globalAttribs.pop("CLOUD_COVERAGE_ASSESSMENT"),
+            'time_coverage_start': self.globalAttribs.pop('PRODUCT_START_TIME'),
+            'time_coverage_end': self.globalAttribs.pop('PRODUCT_STOP_TIME'),
+        })
+        if self.dterrengdata:
+            self.globalAttribs['orbit_number'] = int(self.globalAttribs['DATATAKE_1_ID'].split('_')[2])
+        else:
+            self.globalAttribs['orbit_number'] = int(root.find('.//safe:orbitNumber', namespaces=root.nsmap).text)
+
+    elif satellite.startswith('S1'):
+        self.globalAttribs.update({
+            'orbit_number': int(self.globalAttribs.pop("ORBIT_NUMBER")),
+            'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION").lower(),
+            'relative_orbit_number': root.find('.//safe:relativeOrbitNumber', namespaces=root.nsmap).text,
+            'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME')+'Z',
+            'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME')+'Z',
+            'mode': self.globalAttribs.pop('MODE')
+        })
+        # Some work is necessary to get the polygon:
+        # - get coordinates from manifest
+        coords = root.find('.//gml:coordinates', namespaces=root.nsmap).text
+        # - format to be shapely compliant
+        # - close the polygon by adding the first point at the end
+        formatted = coords.replace(' ', ';').replace(',', ' ').replace(';', ', ')
+        footprint = f"POLYGON(({','.join([formatted, formatted.split(',')[0]])}))"
+        # - reverse lat-lon
+        polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
+
+    # Add bounding box and polygon
+    box = polygon.bounds
+    self.globalAttribs.update({
+        'geospatial_lon_min': box[0],
+        'geospatial_lat_min': box[1],
+        'geospatial_lon_max': box[2],
+        'geospatial_lat_max': box[3],
+    })
+
+    # Add SIOS in collection if latitude > 70
+    if box[3] > 70:
+        self.globalAttribs['collection'] += ',SIOS'
+
+    return
+
 
 def get_key(my_dict,val):
     for key, value in my_dict.items():
          if val == value:
              return key
- 
+
     return "There is no such Key"

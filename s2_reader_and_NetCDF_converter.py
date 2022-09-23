@@ -21,7 +21,6 @@ import sys
 import math
 from collections import defaultdict
 import datetime as dt
-import pytz
 import netCDF4
 import numpy as np
 import osgeo.osr as osr
@@ -32,7 +31,6 @@ import geopandas as geopd
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
 import logging
-import rasterio
 gdal.UseExceptions()
 
 
@@ -52,16 +50,18 @@ class Sentinel2_reader_and_NetCDF_converter:
         SAFE_outpath -- output storage location for unzipped SAFE product
         '''
 
-    def __init__(self, product, indir, outdir):
+    def __init__(self, product, indir, outdir, colhub_uuid=None):
+        self.uuid = colhub_uuid
         self.product_id = product
         self.input_zip = (indir / product).with_suffix('.zip')
+        self.baseline = self.product_id.split('_')[3]
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
         self.xmlFiles = defaultdict(list)
         self.imageFiles = defaultdict(list)
         self.globalAttribs = {}
         self.src = None
-        self.t0 = dt.datetime.now(tz=pytz.utc)
+        self.t0 = dt.datetime.now(dt.timezone.utc)
         self.ncout = None  # NetCDF output file
         self.reference_band = None
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C
@@ -85,11 +85,15 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         # 3) Read sun and view angles
         logger.info('Read view and sun angles')
-        if not self.dterrengdata:
-            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
-        else:
+
+        if self.dterrengdata:
             currXml = self.xmlFiles.get('MTD_TL', None)
-        if currXml is None:
+        elif self.baseline == "N0207":
+            currXml = self.xmlFiles['S2_{}_Tile1_Data'.format(self.processing_level)]
+        else:
+            currXml = self.xmlFiles['S2_{}_Tile1_Metadata'.format(self.processing_level)]
+        # Check for both None and empty list
+        if currXml is None or not currXml:
             logger.error("xml file not found in SAFE directory. Hence exiting")
             self.read_ok = False
             return False
@@ -391,27 +395,11 @@ class Sentinel2_reader_and_NetCDF_converter:
             logger.info('Adding global attributes')
             utils.memory_use(self.t0)
 
-            # todo: add all metadata needed to create MMD file? so that then we can use nc2mmd from senda project?
-            # todo: add link to colhub?
-            # todo: keep all gdal global attributes?
-            # Generic global attributes - for all NBS products
-            #self.globalAttribs.append(cst.global_attributes)
-            self.globalAttribs.update(cst.global_attributes)
-            # Global attributes for all S2 products
-            self.globalAttribs.update(cst.s2_attributes)
-            # Global attributes specific to level
-            self.globalAttribs.update(cst.s2_level_attributes[self.processing_level])
-
-            nowstr = self.t0.isoformat()
-            ncout.netcdf4_version_id = netCDF4.__netcdf4libversion__
-            ncout.file_creation_date = nowstr
-            # todo: how to add history in cste file?
-            self.globalAttribs['history'] = nowstr + ". Converted from SAFE to NetCDF by NBS team."
-            self.globalAttribs['relativeOrbitNumber'] = self.globalAttribs.pop('DATATAKE_1_SENSING_ORBIT_NUMBER')
+            utils.get_global_attributes(self)
             ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
-            # Status
+            ### Status
             logger.info('Finished.')
             utils.memory_use(self.t0)
 
@@ -531,17 +519,9 @@ class Sentinel2_reader_and_NetCDF_converter:
         yp = np.int32(uly - (yres * 0.5)) + indices[0] * np.int32(yres) + indices[0] * np.int32(
             yskew)
 
-        source = osr.SpatialReference()
-        source.ImportFromWkt(self.reference_band.GetProjection())
-        target = osr.SpatialReference()
-        # target.ImportFromEPSG(4326)
-        target.ImportFromProj4('+proj=longlat +ellps=WGS84')
-
-        current_projection = pyproj.Proj(source.ExportToProj4())
-        target_projection = pyproj.Proj(target.ExportToProj4())
-        target2 = current_projection.to_latlong()
-
-        longitude, latitude = pyproj.transform(current_projection, target_projection, xp, yp)
+        current_projection = pyproj.CRS.from_string(self.reference_band.GetProjection())
+        target_projection = pyproj.CRS.from_proj4('+proj=longlat +ellps=WGS84')
+        longitude, latitude = pyproj.Transformer.from_crs(current_projection, target_projection).transform(xp, yp)
 
         return latitude, longitude
 
@@ -654,7 +634,6 @@ class Sentinel2_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-
     # Log to console
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
@@ -664,19 +643,14 @@ if __name__ == '__main__':
 
     workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated')
     workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/new_s2_02')
-    #workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
-
-    indir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/zips')
-
-    products = ['S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239']
-    #products = ['S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226']
-    ##products =['S2B_MSIL1C_20210517T103619_N7990_R008_T30QVE_20210929T075738', 'S2B_MSIL2A_20210517T103619_N7990_R008_T30QVE_20211004T113819']
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/merge')
 
     products = [
-            'S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA',
-            'S2A_MSIL1C_20201028T102141_N0209_R065_T34WDA_20201028T104239',
-            'S2A_MSIL2A_20210714T105031_N0301_R051_T32VMK_20210714T135226'
+            'S2A_MSIL1C_20220321T140851_N0400_R053_T31XFJ_20220321T162746',
+            'S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616'
+
     ]
+    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
@@ -684,9 +658,10 @@ if __name__ == '__main__':
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            indir=indir,
+            indir=outdir,
             outdir=outdir)
-        conversion_object.write_to_NetCDF(outdir, 7)
+        if conversion_object.read_ok:
+            conversion_object.write_to_NetCDF(outdir, 7)
 
 
 
