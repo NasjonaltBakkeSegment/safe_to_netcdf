@@ -182,9 +182,11 @@ def initializer(self):
         # Set polarisation parameters
         polarisations = root.findall('.//s1sarl1:transmitterReceiverPolarisation',
                                      namespaces=root.nsmap)
+        outattrib = ''
         for polarisation in polarisations:
             self.polarisation.append(polarisation.text)
-        self.globalAttribs['polarisation'] = self.polarisation
+            outattrib += polarisation.text
+        self.globalAttribs['polarisation'] = [outattrib]
         # Timeliness
         self.globalAttribs['ProductTimelinessCategory'] = root.find(
             './/s1sarl1:productTimelinessCategory', namespaces=root.nsmap).text
@@ -325,3 +327,4 @@ def get_key(my_dict,val):
              return key
 
     return "There is no such Key"
+
