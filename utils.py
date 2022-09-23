@@ -203,7 +203,7 @@ def uncompress(self):
     if not self.SAFE_dir.is_dir():
         logger.debug('Starting unzipping SAFE archive')
         self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
-        sp.run(["/usr/bin/unzip", "-qq", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
+        sp.run(["/usr/bin/unzip", "-qq", str(self.input_zip), "-d", str(self.SAFE_dir.parent)], check=True)
         logger.debug('Done unzipping SAFE archive')
 
     # Try and find the main XML file
