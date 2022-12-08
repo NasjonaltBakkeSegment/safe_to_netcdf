@@ -14,16 +14,17 @@ import netCDF4
 import numpy as np
 import pathlib
 import datetime as dt
-#import safe_to_netcdf.utils as utils
-#import utils
+import utils as utils
+import constants as cst
 import logging
 import xarray as xa
 from pyproj import CRS
 import os
+import xarray as xa
 
-#logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-
+print('TODO:Add following metadata info(?): Add generation time, Add interpolation method?, ADD DEM?,If thermal denoising? pixel spacing')
 class S1_orthocorrected_to_nc:
     """ Should do:
             1. read Products (including all bands)
@@ -39,7 +40,6 @@ class S1_orthocorrected_to_nc:
         self.ncout = None  # NetCDF output file
 
         self.input_files = self.main()
-        print(self.input_files)
 
     def main(self):
         """test
@@ -51,7 +51,7 @@ class S1_orthocorrected_to_nc:
                 input_files.append(self.srcdir +'/'+ file)
         return input_files
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 32, 32)):
+    def write_to_NetCDF(self, fname, compression_level, chunk_size=(1, 32, 32)):
 
         """ Method writing each input_file to NetCDF product.
 
@@ -65,16 +65,15 @@ class S1_orthocorrected_to_nc:
 
         # Status
         logger.info('Creating NetCDF file')
-        with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
+        with (netCDF4.Dataset(fname, 'w', format='NETCDF4')) as ncout:
             for i, current_file in enumerate(self.input_files):
                 da = xa.open_rasterio(current_file)
                 varName = current_file.split('/')[-1].split('.')[0]
                 if i == 0:
                     ncout.createDimension('time', 0)
-                    ncout.createDimension('x', nx)
-                    ncout.createDimension('y', ny)
+                    ncout.createDimension('x', da.x.size)
+                    ncout.createDimension('y', da.y.size)
 
-                    utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
 
                     # Add projection coordinates
                     ##########################################################
@@ -107,16 +106,58 @@ class S1_orthocorrected_to_nc:
                 assert da.band.size == 1, "Tiffs should be single band files, only"
 
                 print('NOTE: MAKE DATA TYPE CONFIG SPECIFIC')
-                dataType = np.float32
-                varout = ncout.createVariable(varName, DataType, ('time', 'y', 'x'), fill_value=np.nan,
+
+                if varName=='mask':
+                    dataType = 'u1' #Byte unsigned integer 8
+                else:
+                    dataType = np.float32
+                varout = ncout.createVariable(varName, dataType, ('time', 'y', 'x'), fill_value=0,
                                               zlib=True, complevel=compression_level, chunksizes=chunk_size)
 
-                print('NOTE: read varible attributes from config file')
-                longname='test'
+                if varName == 'mask':
+                    varout.flag_values = np.arange(4, dtype=np.int8)+1
+                    varout.flag_meanings = ' '.join(['Missing','Shadow','Folding','Valid'])
+                    longName='Processing mask'
+                elif varName=='incidence':
+                    varout.standard_name = "angle_of_incidence"
+                    varout.units="rad"
+                    longName='local incidence angle'
+                elif varName=='height':
+                    varout.standard_name = "height"
+                    varout.units="m"
+                    varout.positive='up'
+                    longName='Surface height from DEM'
+                else:
+                    varout.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
+                    varout.units="1"
+                    varout.polarisation = varName.split('_')[-1]
+                    longName=varName
+
                 varout.grid_mapping = "crs"
                 varout.long_name = longName
-                break
                 #varout[0, :] = da.data
+
+            #Add global attributes
+            globalAttribs={'rectified_time':da.TIFFTAG_DATETIME,
+                            'software':da.TIFFTAG_SOFTWARE,
+                            'title':'Rectified Sentinel-1 GRD data',
+                            'file_creation_date': '{}'.format(dt.datetime.now()),
+                            'Conventions': 'CF-1.8',
+                            'summary': 'Rectified Sentinel-1 C-band SAR GRD product',
+                            'keywords': '[Earth Science, Spectral/Engineering, RADAR, RADAR backscatter], [Earth Science, Spectral/Engineering, RADAR, RADAR imagery], [Earth Science, Spectral/Engineering, Microwave, Microwave Imagery]',
+                            'keywords_vocabulary': 'GCMD Science Keywords',
+                            'institution': 'Norwegian Meteorological Institute',
+                            'history': '{} rectified from original product by the NBS team'.format(da.TIFFTAG_DATETIME),
+                            'source': 'surface observation'
+            }
+            ncout.setncatts(globalAttribs)
+            ncout.sync()
+
+        # Status
+        logger.info('Finished.')
+        #utils.memory_use(self.t0)
+                #if i ==3:
+                #    break
 
 
 
@@ -130,16 +171,3 @@ class S1_orthocorrected_to_nc:
 #log_info = logging.StreamHandler(sys.stdout)
 #log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 #logger.addHandler(log_info)
-
-
-#workdir = '/home/trygveh/Downloads/test_orthocorr'
-workdir = '/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_orto_NVE/S1A_IW_GRDH_1SDV_20221107T170314_20221107T170339_045791_057A37_7F1E_ORTHORECTIFIED/'
-product_name = 'S1A_IW_GRDH_1SDV_20221107T170314_20221107T170339_045791_057A37_7F1E_ORTHORECTIFIED/'
-
-print('hello')
-test = S1_orthocorrected_to_nc(product=product_name,srcdir=workdir,outdir='notspecified')
-import xarray as xa
-import matplotlib.pyplot as plt
-da=xa.open_rasterio('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_orto_NVE/S1A_IW_GRDH_1SDV_20221107T170314_20221107T170339_045791_057A37_7F1E_ORTHORECTIFIED/sigmaNought_VH.tiff',parse_coordinates=True)#,chunks=(100,100))
-da.isel(x=slice(1000,1100),y=slice(1000,1100)).plot() ; plt.show()
-#ds = da.to_dataset('band')
