@@ -2,7 +2,7 @@
 
 # Name:          XX.py
 # Purpose:       TBD
-# Author(s):     Trygve Halsne, Albert
+# Author(s):     Trygve Halsne,
 # Created:
 # Modifications:
 # Copyright:     (c) Norwegian Meteorological Institute, 2022
@@ -121,8 +121,6 @@ class S1_orthocorrected_to_nc:
 
 
 
-
-
 #if __name__ == '__main__':
 # Log to console
 #logger = logging.getLogger()
@@ -130,16 +128,3 @@ class S1_orthocorrected_to_nc:
 #log_info = logging.StreamHandler(sys.stdout)
 #log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 #logger.addHandler(log_info)
-
-
-#workdir = '/home/trygveh/Downloads/test_orthocorr'
-workdir = '/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_orto_NVE/S1A_IW_GRDH_1SDV_20221107T170314_20221107T170339_045791_057A37_7F1E_ORTHORECTIFIED/'
-product_name = 'S1A_IW_GRDH_1SDV_20221107T170314_20221107T170339_045791_057A37_7F1E_ORTHORECTIFIED/'
-
-print('hello')
-test = S1_orthocorrected_to_nc(product=product_name,srcdir=workdir,outdir='notspecified')
-import xarray as xa
-import matplotlib.pyplot as plt
-da=xa.open_rasterio('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_orto_NVE/S1A_IW_GRDH_1SDV_20221107T170314_20221107T170339_045791_057A37_7F1E_ORTHORECTIFIED/sigmaNought_VH.tiff',parse_coordinates=True)#,chunks=(100,100))
-da.isel(x=slice(1000,1100),y=slice(1000,1100)).plot() ; plt.show()
-#ds = da.to_dataset('band')
