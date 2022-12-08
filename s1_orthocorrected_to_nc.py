@@ -2,7 +2,7 @@
 
 # Name:          XX.py
 # Purpose:       TBD
-# Author(s):     Trygve Halsne, Albert
+# Author(s):     Trygve Halsne,
 # Created:
 # Modifications:
 # Copyright:     (c) Norwegian Meteorological Institute, 2022
@@ -158,8 +158,6 @@ class S1_orthocorrected_to_nc:
         #utils.memory_use(self.t0)
                 #if i ==3:
                 #    break
-
-
 
 
 
