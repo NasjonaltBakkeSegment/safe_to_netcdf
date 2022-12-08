@@ -135,7 +135,7 @@ class S1_orthocorrected_to_nc:
 
                 varout.grid_mapping = "crs"
                 varout.long_name = longName
-                #varout[0, :] = da.data
+                varout[0, :] = da.data
 
             #Add global attributes
             globalAttribs={'rectified_time':da.TIFFTAG_DATETIME,
