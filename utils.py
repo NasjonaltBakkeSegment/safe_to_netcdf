@@ -12,7 +12,6 @@ import zipfile
 import logging
 import yaml
 from pkg_resources import resource_string
-import uuid
 import shapely.wkt, shapely.ops
 
 logger = logging.getLogger(__name__)
@@ -96,8 +95,6 @@ def initializer(self):
 
     # List of xml / gml files
     if sat == 'S2' and self.dterrengdata:
-        # Added to be strictly identical to older SAFE2NC version - not used otherwise
-        self.xmlFiles['mainXML'] = self.SAFE_dir / 'MTD_MSIL1C.xml'
         # For DTERR data, add manually the list of images / xml-gml files from parsing the SAFE
         # directory
         allFiles = zipfile.ZipFile(self.input_zip).namelist()
@@ -185,17 +182,11 @@ def initializer(self):
         # Set polarisation parameters
         polarisations = root.findall('.//s1sarl1:transmitterReceiverPolarisation',
                                      namespaces=root.nsmap)
-        ##for polarisation in polarisations:
-        ##    self.polarisation.append(polarisation.text)
-        ##self.globalAttribs['polarisation'] = self.polarisation
-
-        # to be identical to python2/Xenial
         outattrib = ''
         for polarisation in polarisations:
             self.polarisation.append(polarisation.text)
             outattrib += polarisation.text
         self.globalAttribs['polarisation'] = [outattrib]
-
         # Timeliness
         self.globalAttribs['ProductTimelinessCategory'] = root.find(
             './/s1sarl1:productTimelinessCategory', namespaces=root.nsmap).text
@@ -214,11 +205,14 @@ def uncompress(self):
     if not self.SAFE_dir.is_dir():
         logger.debug('Starting unzipping SAFE archive')
         self.SAFE_dir.parent.mkdir(parents=False, exist_ok=True)
-        sp.run(["/usr/bin/unzip", "-qq", self.input_zip, "-d", self.SAFE_dir.parent], check=True)
+        sp.run(["/usr/bin/unzip", "-qq", str(self.input_zip), "-d", str(self.SAFE_dir.parent)], check=True)
         logger.debug('Done unzipping SAFE archive')
 
     # Try and find the main XML file
-    xmlFile = self.SAFE_dir / 'manifest.safe'
+    if self.SAFE_dir.stem.startswith('S3'):
+        xmlFile = self.SAFE_dir / 'xfdumanifest.xml'
+    else:
+        xmlFile = self.SAFE_dir / 'manifest.safe'
     if not xmlFile.is_file():
         xmlFile = self.SAFE_dir / 'MTD_MSIL1C.xml'
         if not xmlFile.is_file():
@@ -325,4 +319,12 @@ def get_global_attributes(self):
         self.globalAttribs['collection'] += ',SIOS'
 
     return
+
+
+def get_key(my_dict,val):
+    for key, value in my_dict.items():
+         if val == value:
+             return key
+
+    return "There is no such Key"
 

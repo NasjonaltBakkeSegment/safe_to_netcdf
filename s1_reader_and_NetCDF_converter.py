@@ -14,8 +14,8 @@ import sys
 from collections import defaultdict
 import netCDF4
 import numpy as np
-from scipy import interpolate
 import pathlib
+from scipy import interpolate
 import datetime as dt
 import safe_to_netcdf.utils as utils
 import logging
@@ -912,8 +912,8 @@ class Sentinel1_reader_and_NetCDF_converter:
                     lastAzimuthLine = int(values[2])
                     firstRangeSample = int(values[1])
                     lastRangeSample = int(values[3])
-                    # line = np.array(values[4].split(),int)
-                    # noiseAzimuthLUT = np.array(values[5].split(),float)
+                    # line = np.array(values[4].split(),np.int)
+                    # noiseAzimuthLUT = np.array(values[5].split(),np.float)
                     noiseAzimuthVectorStart = t0 + dt.timedelta(seconds=firstAzimuthLine * delta_ts)
                     noiseAzimuthVectorStop = t0 + dt.timedelta(seconds=lastAzimuthLine * delta_ts)
                     if not currentSwathStartTime:
@@ -1048,7 +1048,6 @@ class Sentinel1_reader_and_NetCDF_converter:
 
 if __name__ == '__main__':
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_attributes/S2_N0400')
     # Log to console
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
@@ -1056,10 +1055,7 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-
-    # Noise matrix pb
-    #products = ['S1A_EW_GRDH_1SDH_20201023T180210_20201023T180420_034927_0412AD_4F16']
-
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/merge')
     products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79']
 
     for product in products:

@@ -9,7 +9,7 @@
 #                Note: the routine also works for S2 MSI L1C products produced
 #                by ESA with Norwegian DEM (*DTERRENGDATA* products).
 #
-# Author(s):     Trygve Halsne
+# Author(s):     Trygve Halsne, Elodie Fernandez
 # Created:
 # Modifications:
 # Copyright:     (c) Norwegian Meteorological Institute, 2018
@@ -21,19 +21,16 @@ import sys
 import math
 from collections import defaultdict
 import datetime as dt
-import lxml.etree as ET
 import netCDF4
 import numpy as np
-import osgeo.ogr as ogr
 import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
+import geopandas as geopd
 import safe_to_netcdf.utils as utils
 import safe_to_netcdf.constants as cst
-import os
 import logging
-import rasterio
 gdal.UseExceptions()
 
 
@@ -70,7 +67,6 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.dterrengdata = False  # variable saying if products is Norwegian DEM L1C
         self.sunAndViewAngles = defaultdict(list)
         self.vectorInformation = defaultdict(list)
-        self.SAFE_structure = None
         self.image_list_dterreng = []
         self.read_ok = True
 
@@ -103,11 +99,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             return False
         self.readSunAndViewAngles(currXml)
 
-        # 5) Retrieve SAFE product structure
-        # much difficulty afterwards to be able to save this to netCDF
-        ##self.SAFE_structure = zipfile.ZipFile(self.input_zip).namelist()
-        self.SAFE_structure = self.list_product_structure()
-
     def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 32, 32)):
         """ Method writing output NetCDF product.
 
@@ -131,37 +122,25 @@ class Sentinel2_reader_and_NetCDF_converter:
             if v.find('10m') > 0:
                 self.reference_band = gdal.Open(k)
 
+        # frequency bands
         nx = self.reference_band.RasterXSize  # number of pixels for 10m spatial resolution
-        # frequency bands
         ny = self.reference_band.RasterYSize  # number of pixels for 10m spatial resolution
-        # frequency bands
+        
+        # sun and view angles raster resolution
+        nxa, nya = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape  
 
         # output filename
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
 
         with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
-            if self.processing_level == 'Level-2A':
-                ncout.createDimension('time', 0)
-            else:
-                ncout.createDimension('time', 1)
+            ncout.createDimension('time', 0)
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
+            ncout.createDimension('raster_band_id', len(cst.s2_bands_order.keys()))
+            ncout.createDimension('xa', nxa)
+            ncout.createDimension('ya', nya)
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
-
-            if not self.processing_level == 'Level-2A':
-                nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True, complevel=compression_level)
-                nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True, complevel=compression_level)
-                lat,lon = self.genLatLon(nx, ny) #Assume gcps are on a regular grid
-                nclat.long_name = 'latitude'
-                nclat.units = 'degrees_north'
-                nclat.standard_name = 'latitude'
-                nclat[:,:]=lat
-
-                nclon.long_name = 'longitude'
-                nclon.units = 'degrees_east'
-                nclon.standard_name = 'longitude'
-                nclon[:,:]=lon
 
             # Add projection coordinates
             ##########################################################
@@ -180,6 +159,18 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncy.units = 'm'
             ncy.standard_name = 'projection_y_coordinate'
             ncy[:] = ynp
+            
+            # Add projection raster band id variable
+            ##########################################################
+            nc_rasterband_id = ncout.createVariable('band_id', 'i4', 'raster_band_id', zlib=True, complevel=compression_level)
+            nc_rasterband_id.long_name = 'raster band id'
+            nc_rasterband_id[:] = np.array(list(cst.s2_bands_order.keys()))
+            nc_rasterband_id.flag_values = np.array(list(
+                            cst.s2_bands_order.keys()),
+                                                      dtype=np.int8)
+            nc_rasterband_id.flag_meanings = ' '.join(
+                            [value for value in list(cst.s2_bands_order.values())])
+            
 
             # Add raw measurement layers
             # Currently adding TCI
@@ -202,19 +193,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                 subdataset_geotransform = subdataset.GetGeoTransform()
                 # True color image (8 bit true color image)
                 if ("True color image" in v) or ('TCI' in v):
-                    ncout.createDimension('dimension_rgb', subdataset.RasterCount)
-                    varout = ncout.createVariable('TCI', 'u1', ('dimension_rgb', 'y', 'x'),
-                                                  fill_value=0, zlib=True, complevel=compression_level)
-                    varout.units = "1"
-                    if not self.processing_level == 'Level-2A':
-                        varout.coordinates = "lat lon"
-                    varout.grid_mapping = "UTM_projection"
-                    varout.long_name = 'TCI RGB from B4, B3 and B2'
-                    varout._Unsigned = "true"
-                    for i in range(1, subdataset.RasterCount + 1):
-                        current_band = subdataset.GetRasterBand(i)
-                        band_measurement = current_band.GetVirtualMemArray()
-                        varout[i - 1, :, :] = band_measurement
+                    continue
                 # Reflectance data for each band
                 else:
                     for i in range(1, subdataset.RasterCount + 1):
@@ -225,32 +204,23 @@ class Sentinel2_reader_and_NetCDF_converter:
                         else:
                             band_metadata = current_band.GetMetadata()
                             varName = band_metadata['BANDNAME']
-                        logger.debug(varName)
                         if varName.startswith('B'):
-                            if self.processing_level == 'Level-2A':
-                                varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
-                                                              zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                            else:
-                                varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
+                            varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
                                                           zlib=True, complevel=compression_level)
                             varout.units = "1"
                             varout.grid_mapping = "UTM_projection"
                             if self.processing_level == 'Level-2A':
                                 varout.standard_name = 'surface_bidirectional_reflectance'
                             else:
-                                varout.coordinates = "lat lon"
                                 varout.standard_name = 'toa_bidirectional_reflectance'
                             varout.long_name = 'Reflectance in band %s' % varName
                             if band_metadata:
-                                #try:
                                 varout.bandwidth = band_metadata['BANDWIDTH']
                                 varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
                                 varout.wavelength = band_metadata['WAVELENGTH']
                                 varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
                                 varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
                                 varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                                #except KeyError as e:
-                                #    print(f'Metadata not found: {e}')
                             varout._Unsigned = "true"
                             # from DN to reflectance
                             logger.debug((varName, subdataset_geotransform))
@@ -261,7 +231,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                                     order=0)
                             else:
                                 band_measurement = current_band.GetVirtualMemArray()
-                            #print(band_measurement.shape)
                             varout[0, :, :] = band_measurement
 
             # set grid mapping
@@ -271,6 +240,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_crs = ncout.createVariable('UTM_projection', np.int32)
             nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
             nc_crs.proj4_string = source_crs.ExportToProj4()
+            nc_crs.crs_wkt = source_crs.ExportToWkt()
             nc_crs.semi_major_axis = source_crs.GetSemiMajor()
             nc_crs.scale_factor_at_central_meridian = source_crs.GetProjParm('scale_factor')
             nc_crs.longitude_of_central_meridian = source_crs.GetProjParm('central_meridian')
@@ -279,6 +249,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_crs.false_easting = source_crs.GetProjParm('false_easting')
             nc_crs.false_northing = source_crs.GetProjParm('false_northing')
             nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
+            nc_crs.crs_wkt = self.reference_band.GetProjection()
 
             # Add vector layers
             ##########################################################
@@ -287,102 +258,56 @@ class Sentinel2_reader_and_NetCDF_converter:
             utils.memory_use(self.t0)
             gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
 
-            # Old masks format
-            for gmlfile in self.xmlFiles.values():
-                if gmlfile and gmlfile.suffix == '.gml':
-                    layer = gmlfile.stem
-                    rasterized_ok, layer_mask, mask = self.rasterizeVectorLayers(nx, ny, gmlfile)
-                    # build transformer, assuming matching coordinate systems.
-                    if rasterized_ok:
-                        if layer == "MSK_CLOUDS_B00":
-                            layer_name = 'Clouds'
-                            comment_name = 'cloud'
-                        else:
-                            layer_name = layer
-                            comment_name = 'vector'
-                        varout = ncout.createVariable(layer_name, 'i1', ('time', 'y', 'x'), fill_value=-1,
-                                                      zlib=True, complevel=compression_level)
-                        varout.long_name = f"{layer_name} mask 10m resolution"
-                        varout.comment = f"Rasterized {comment_name} information."
-                        if not self.processing_level == 'Level-2A':
-                             varout.coordinates = "lat lon"
-                        varout.grid_mapping = "UTM_projection"
-                        varout.flag_values = np.array(list(layer_mask.values()), dtype=np.int8)
-                        varout.flag_meanings = ' '.join(
-                            [key.replace('-', '_') for key in list(layer_mask.keys())])
-                        varout[0, :] = mask
-
-            # Add mask information, new jp2 format
-            for k, v in self.imageFiles.items():
-                if v.suffix == '.jp2' and (v.stem.startswith('MSK_DETFOO') or v.stem.startswith('MSK_CLASSI')):
-                    utils.memory_use(self.t0)
-                    logger.debug((k, v))
-                    # Read and resample image to 10m resolution
-                    src = rasterio.open(v)
-                    upscale_factor = nx / src.shape[1]
-                    img = src.read(out_shape=(src.count,
-                        int(src.height * upscale_factor), int(src.width * upscale_factor)),
-                        resampling=rasterio.enums.Resampling.bilinear)
-                    # Several masks per file
-                    for i in src.indexes:
-                        dataType = src.dtypes[i-1]
-                        if v.stem.startswith('MSK_CLASSI'):
-                            masks = ['OPAQUE', 'CIRRUS', 'SNOW']
-                            comment = ['Bit is 1 when pixel is OPAQUE', 'Bit is 1 when pixel is CIRRUS', 'Bit is 1 when pixel is SNOW/ICE']
-                        elif v.stem.startswith('MSK_DETFOO'):
-                            masks = ['DETECTOR FOOTPRINT']
-                            comment = ['4 bits to encode the 12 detectors']
-                        elif v.stem.startswith('MSK_QUALIT'):
-                            masks = ['ANC_LOST', 'ANC_DEG', 'MSI_LOST', 'MSI_DEG', 'QT_DEFECTIVE_PIXELS', 'QT_NODATA_PIXELS', 'QT_PARTIALLY_CORRECTED_PIXELS', 'QT_SATURATED_PIXELS']
-                            comment = ['Bit is 1 when pixel is ANC data lost', 'Bit is 1 when pixel is ANC data degraded',
-                                       'Bit is 1 when pixel is MSI data lost', 'Bit is 1 when pixel is MSI data degraded',
-                                       'Bit is 1 when pixel is defective', 'Bit is 1 when pixel is NO_DATA',
-                                       'Bit is 1 when pixel is PARTIALLY_CORRECTED', 'Bit is 1 when pixel is saturated at L1A or L1B']
-                        else:
-                           continue
-                        varout = ncout.createVariable('_'.join([v.stem, masks[i-1]]), dataType, ('time', 'y', 'x'), fill_value=0,
-                                                  zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                        # varout.coordinates = "lat lon" ;
-                        varout.grid_mapping = "UTM_projection"
-                        varout.long_name = f'{masks[i-1]} from {k}'
-                        varout.comment = comment[i-1]
-                        varout[0, :, :] = img[i-1, :, :]
-                        if not self.processing_level == 'Level-2A':
-                            varout.coordinates = "lat lon"
-
-            # Add Level-2A layers
+            # Add specific Level-1C or Level-2A layers
             ##########################################################
             # Status
-            if self.processing_level == 'Level-2A':
+            specific_layers_kv = {}
+            utils.memory_use(self.t0)
+            gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
+
+            if self.processing_level == 'Level-1C':
+                logger.info('Adding Level-1C specific layers')
+                for layer in cst.s2_l1c_layers:
+                    for k, v in self.imageFiles.items():
+                        if layer in k:
+                            specific_layers_kv[k] = cst.s2_l1c_layers[k]
+                        elif layer in str(v):
+                            logger.debug((layer, str(v), k))
+                            specific_layers_kv[k] = cst.s2_l1c_layers[layer]
+                
+
+            elif self.processing_level == 'Level-2A':
                 logger.info('Adding Level-2A specific layers')
-                utils.memory_use(self.t0)
-                gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
-                l2a_kv = {}
                 for layer in cst.s2_l2a_layers:
                     for k, v in self.imageFiles.items():
                         if layer in k:
-                            l2a_kv[k] = cst.s2_l2a_layers[k]
+                            specific_layers_kv[k] = cst.s2_l2a_layers[k]
                         elif layer in str(v):
                             logger.debug((layer, str(v), k))
-                            l2a_kv[k] = cst.s2_l2a_layers[layer]
+                            specific_layers_kv[k] = cst.s2_l2a_layers[layer]
 
-                for k, v in l2a_kv.items():
-                    logger.debug((k, v))
-                    varName, longName = v.split(',')
-                    SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
-                    if SourceDS.RasterCount > 1:
-                        logger.info("Raster data contains more than one layer")
-                    NDV = SourceDS.GetRasterBand(1).GetNoDataValue()
+            for k, v in specific_layers_kv.items():
+                logger.debug((k, v))
+                varName, longName = v.split(',')
+                SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
+                nb_rasterBands =  SourceDS.RasterCount 
+                    
+                if SourceDS.RasterCount > 1:
+                    logger.info("Raster data contains more than one layer")
+                         
+                for i in range(1,nb_rasterBands+1):
+                    if nb_rasterBands>1:
+                        varName =  v.split(',')[0].split()[i-1]
+                        longName =  v.split(',')[1].split('-')[i-1]
+                    NDV = SourceDS.GetRasterBand(i).GetNoDataValue()
                     xsize = SourceDS.RasterXSize
                     ysize = SourceDS.RasterYSize
                     GeoT = SourceDS.GetGeoTransform()
+                    logger.info("{}".format(GeoT))
                     DataType = gdal_nc_data_types[
-                        gdal.GetDataTypeName(SourceDS.GetRasterBand(1).DataType)]
-                    # print(NDV, xsize, ysize, GeoT, DataType)
-
+                        gdal.GetDataTypeName(SourceDS.GetRasterBand(i).DataType)]
                     varout = ncout.createVariable(varName, DataType, ('time', 'y', 'x'), fill_value=0,
                                                   zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                    # varout.coordinates = "lat lon" ;
                     varout.grid_mapping = "UTM_projection"
                     varout.long_name = longName
                     if varName == "SCL":
@@ -391,113 +316,82 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                       dtype=np.int8)
                         varout.flag_meanings = ' '.join(
                             [key for key in list(cst.s2_scene_classification_flags.keys())])
-
+    
                     if GeoT[1] != 10:
-                        raster_data = scipy.ndimage.zoom(input=SourceDS.GetVirtualMemArray(),
+                        raster_data = scipy.ndimage.zoom(input=SourceDS.GetRasterBand(i).GetVirtualMemArray(),
                                                          zoom=nx / xsize, order=0)
                     else:
-                        raster_data = SourceDS.GetVirtualMemArray()
+                        raster_data = SourceDS.GetRasterBand(i).GetVirtualMemArray()
                     varout[0, :] = raster_data
 
             # Add sun and view angles
             ##########################################################
             # Status
-            logger.info('Adding sun and view angles')
+            logger.info('Adding sun and view angles in native resolution')
             utils.memory_use(self.t0)
+            
+            varout_view_azimuth = ncout.createVariable('view_azimuth', np.float32, ('time','raster_band_id', 'ya', 'xa'), fill_value=netCDF4.default_fillvals['f4'],
+                                                  zlib=True, complevel=compression_level)
+            varout_view_azimuth.units = 'degree'
+            varout_view_azimuth.long_name = 'Viewing incidence azimuth angle' 
+            varout_view_azimuth.comment = 'Original 22x22 pixel resolution'
+
+            varout_view_zenith = ncout.createVariable('view_zenith', np.float32, ('time','raster_band_id', 'ya', 'xa'), fill_value=netCDF4.default_fillvals['f4'],
+                                                  zlib=True, complevel=compression_level)
+            varout_view_zenith.units = 'degree'
+            varout_view_zenith.long_name = 'Viewing incidence zenith angle' 
+            varout_view_zenith.comment = 'Original 22x22 pixel resolution'
 
             counter = 1
             for k, v in list(self.sunAndViewAngles.items()):
                 logger.debug(("Handeling %i of %i" % (counter, len(self.sunAndViewAngles))))
-                angle_step = int(math.ceil(nx / float(v.shape[0])))
 
-                resampled_angles = self.resample_angles(v, nx, v.shape[0], v.shape[1], angle_step,
-                                                        type=np.float32)
-
-                if self.processing_level == 'Level-2A':
-                    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
-                                              zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                else:
-                    varout = ncout.createVariable(k, np.float32, ('time', 'y', 'x'), fill_value=netCDF4.default_fillvals['f4'],
-                                                  zlib=True, complevel=compression_level)
-                varout.units = 'degree'
                 if 'sun' in k:
+                    varout = ncout.createVariable(k, np.float32, ('time', 'ya', 'xa'), fill_value=netCDF4.default_fillvals['f4'],
+                                                  zlib=True, complevel=compression_level)
+                    varout.units = 'degree'
                     varout.long_name = 'Solar %s angle' % k.split('_')[-1]
-                else:
-                    varout.long_name = 'Viewing incidence %s angle' % k.split('_')[1]
-                varout.coordinates = 'lat lon'
-                varout.grid_mapping = "UTM_projection"
-                varout.comment = '1 to 1 with original 22x22 resolution'
-                varout[0, :, :] = resampled_angles
+                    varout.comment = 'Original 22x22 pixel resolution'
+                    varout[0, :, :] = v
+                elif 'zenith' in k :
+                    band_id = k.split('_')[-1]                    
+                    varout_view_zenith[0,utils.get_key(cst.s2_bands_order,band_id), :, :] = v                
+                elif 'azimuth' in k :
+                    band_id = k.split('_')[-1]                    
+                    varout_view_azimuth[0,utils.get_key(cst.s2_bands_order,band_id), :, :] = v                
+
                 counter += 1
 
-            # Add xml files as character values see:
-            # https://stackoverflow.com/questions/37079883/string-handling-in-python-netcdf4
+            # Add orbit specific data
             ##########################################################
             # Status
-            logger.info('Adding XML files as character variables')
+            logger.info('Adding satellite orbit specific data')
             utils.memory_use(self.t0)
 
-            for k, xmlfile in self.xmlFiles.items():
-                if xmlfile and xmlfile.suffix == '.xml':
-                        xmlString = self.xmlToString(xmlfile)
+            root = utils.xml_read(self.mainXML)
+            if not self.dterrengdata:
+                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',
+                                                              namespaces=root.nsmap).text
+            else:
+                self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
 
-                        if xmlString:
-                            dim_name = str('dimension_' + k.replace('-', '_'))
-                            ncout.createDimension(dim_name, len(xmlString))
-                            msg_var = ncout.createVariable(k.replace('-', '_'), 'S1', dim_name)
-                            msg_var.long_name = str("SAFE xml file: " + k)
-                            msg_var.comment = "Original SAFE xml file added as character values."
-                            # todo DeprecationWarning: tostring() is deprecated. Use tobytes()
-                            # instead.
-                            msg_var[:] = netCDF4.stringtochar(np.array([xmlString], 'S'))
+            ncout.createDimension('orbit_dim', 3)
+            nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
+            rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
+            orb_nb = self.globalAttribs['orbitNumber']
+            orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
+            platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
 
-            # Add SAFE product structure as character values
-            ##########################################################
-            # Status
-            logger.info('Adding SAFE product structure as character variable')
-            if self.SAFE_structure:
-                dim_name = str('dimension_SAFE_structure')
-                ncout.createDimension(dim_name, len(self.SAFE_structure))
-                msg_var = ncout.createVariable("SAFE_structure", 'S1', dim_name)
-                msg_var.comment = "Original SAFE product structure xml file as character values."
-                msg_var.long_name = "Original SAFE product structure."
-                msg_var[:] = netCDF4.stringtochar(np.array([self.SAFE_structure], 'S'))
-
-            if self.processing_level == 'Level-2A':
-                # Add orbit specific data
-                ##########################################################
-                # Status
-                logger.info('Adding satellite orbit specific data')
-
-                platform_id = {"Sentinel-2A":0, "Sentinel-2B":1,
-                               "Sentinel-2C":2,"Sentinel-2D":3,}
-                #orb_dir_id = {"DESCENDING":0, "":1,
-                #print(self.xmlFiles)
-
-                #if self.xmlFiles['manifest']:
-                #tree = ET.parse(self.SAFE_dir+'/manifest.safe')
-                tree = ET.parse(str(self.SAFE_dir/'manifest.safe'))
-                root = tree.getroot()
-                self.globalAttribs['orbitNumber'] = root.find('.//safe:orbitNumber',namespaces=root.nsmap).text
-
-                dim_orb = ncout.createDimension('orbit_dim',3)
-                nc_orb = ncout.createVariable('orbit_data',np.int32,('time','orbit_dim'))
-                rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
-                orb_nb = root.find('.//safe:orbitNumber',namespaces=root.nsmap).text
-                orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
-                platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
-
-                nc_orb.relativeOrbitNumber = rel_orb_nb
-                nc_orb.orbitNumber = orb_nb
-                nc_orb.orbitDirection = orb_dir
-                nc_orb.platform = platform
-                nc_orb.description = "Values structured as [relative orbit number, orbit number, platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
-
-                nc_orb[0,:] = [int(rel_orb_nb),int(orb_nb),platform_id[platform]]
+            nc_orb.relativeOrbitNumber = rel_orb_nb
+            nc_orb.orbitNumber = orb_nb
+            nc_orb.orbitDirection = orb_dir
+            nc_orb.platform = platform
+            nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
+                                 "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
+            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
 
             # Add global attributes
-            ##########################################################
-            # Status
+
             logger.info('Adding global attributes')
             utils.memory_use(self.t0)
 
@@ -510,27 +404,6 @@ class Sentinel2_reader_and_NetCDF_converter:
             utils.memory_use(self.t0)
 
         return out_netcdf.is_file()
-
-    def xmlToString(self, xmlfile):
-        """ Method for reading XML files returning the entire file as single
-            string.
-        """
-        if not xmlfile.is_file():
-            logger.error(('Error: Can\'t find xmlfile %s' % (xmlfile)))
-            return False
-        try:
-            parser = ET.XMLParser(recover=True)
-            tree = ET.parse(str(xmlfile), parser)
-            return ET.tostring(tree)
-        except:
-            logger.info(("Could not parse %s as xmlFile. Try to open regularly." % xmlfile))
-            with open(xmlfile, 'r') as infile:
-                text = infile.read()
-            if text:
-                return text
-            else:
-                logger.error(("Could not parse %s. Something wrong with file." % xmlfile))
-                return False
 
     def readSunAndViewAngles(self, xmlfile):
         """ Method for reading sun and view angles from Sentinel-2
@@ -625,54 +498,6 @@ class Sentinel2_reader_and_NetCDF_converter:
                     angles_resampled[i * step:new_dim, j * step:new_dim] = angles[i, j]
         return angles_resampled
 
-    def rasterizeVectorLayers(self, nx, ny, gmlfile):
-
-        # Open the data source and read in the extent
-        NoData_value = 0
-
-        source_ds = ogr.Open(str(gmlfile))
-        source_layer = source_ds.GetLayer()
-        # Check that gml file contains features
-        if source_layer is None:
-            return False, None, None
-
-        geotransform = self.reference_band.GetGeoTransform()
-        dst_ds = gdal.GetDriverByName('MEM').Create('', nx, ny, 1, gdal.GDT_Byte)
-        dst_rb = dst_ds.GetRasterBand(1)
-        dst_rb.SetNoDataValue(NoData_value)
-        dst_ds.SetGeoTransform(geotransform)
-
-        flag_values = []
-        flag_meanings = []
-        for i in range(0, source_layer.GetFeatureCount()):
-            feat = source_layer.GetFeature(i)
-            # Some SAFE files have their features starting at index 1 instead of 0
-            # (it's the the case for the QT_PARTIALLY_CORRECTED_PIXELS for S2 L2A products)
-            # So try and get the next feature if one is None, if still None, exit
-            if feat is None:
-                feat = source_layer.GetFeature(i+1)
-                if feat is None:
-                    return False, None, None
-            name = feat.GetField('gml_id')
-            source_layer.SetAttributeFilter("gml_id = \'%s\'" % name)
-            if 'OPAQUE' in name:
-                value = int(name.split('.')[-1]) + 1
-            else:
-                value = int(name[-1]) + 1
-            gdal.RasterizeLayer(dst_ds, [1], source_layer, burn_values=[value])
-            flag_values.append(value)
-            flag_meanings.append(name)
-
-        dst_ds.FlushCache()
-        mask_arr = dst_ds.GetRasterBand(1).ReadAsArray()
-        dst_ds = None
-
-        # order flags for easier comparison
-        sorted_pairs = sorted(zip(flag_meanings, flag_values))
-        layer_mask = dict(sorted_pairs)
-
-        return True, layer_mask, mask_arr
-
     def genLatLon(self, nx, ny, latlon=True):
         """ Method providing latitude and longitude arrays or projection
             coordinates depending on latlon argument."""
@@ -700,36 +525,111 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         return latitude, longitude
 
-    def list_product_structure(self):
-        """ Traverse SAFE file structure (or any file structure) and
-            creates a xml file containing the file structure.
+    def write_vector(self, vectorfile, ncfile):
+        """
 
-            Returns a string representation of the xml file."""
+        Write content of a shapefile in netcdf - following CF 1.8 convention
+        Input file can be: any vector-based spatial data (including shape, gml, geojson, ...).
+        Input data can be: polygon(s) with no holes.
 
-        startpath = str(self.SAFE_dir)
+        Args:
+            vectorfile [pathlib.Path]: input vector file
+            ncfile     [pathlib.Path]: output nc file, already existing and open for writing
+        Returns: N/A
 
-        root_path = startpath.split('/')[-1]
-        ET_root = ET.Element(root_path)
-        # Create dictionary that contains all elements
-        elements = {root_path: ET_root}
+        """
 
-        # Iterate throgh the file structure
-        for root, dirs, files in os.walk(startpath):
-            level = root.replace(startpath, '').count(os.sep)
-            current_xpath = str('/' + root_path + root.replace(startpath, ''))
-            current_path = root.replace(startpath, '')
+        # -------------------------------
+        #    Read input information
+        # -------------------------------
 
-            # Create all folder elements
-            if dirs:
-                for dir in dirs:
-                    element = ET.SubElement(elements[current_xpath.strip('/')], dir)
-                    elements[str(current_xpath.strip('/') + '/' + dir)] = element
-            # Add all files in the correct folder
-            for f in files:
-                sub_element = ET.SubElement(elements[current_xpath.strip('/')], 'file')
-                sub_element.text = f
+        # Read data from vector file. Exits if no data found.
+        try:
+            src = geopd.read_file(vectorfile)
+        except ValueError:
+            print(f'No data in {vectorfile}')
+            return
 
-        return ET.tostring(ET_root)
+        # - nb of shapes within file
+        nGeometries = src.shape[0]
+
+        # - list of nodes for each shape
+        nodes = src['geometry'].apply(lambda x: x.exterior.coords)
+
+        # - nb of nodes for each shape
+        nNodesPerGeom = [len(x) for x in nodes]
+
+        # - x, y, z coordinates for each node of each shape
+        flat_nodes = [y for x in nodes for y in x]
+        try:
+            x, y = zip(*flat_nodes)
+        except ValueError:
+            x, y, z = zip(*flat_nodes)
+
+        # Variable name in output nc file
+        name = vectorfile.stem
+        if name == "MSK_CLOUDS_B00":
+            name = 'Clouds'
+
+        # Read actual vector information
+        flags = src.gml_id
+        if name == "Clouds":
+            geom_values = flags.apply(lambda x: int(x.split('.')[-1]) + 1)
+        else:
+            geom_values = flags.apply(lambda x: int(x[-1]) + 1)
+
+        # -------------------------------
+        #    Write to nc file
+        # -------------------------------
+
+        # Write shape data in specific group
+        #shapes = ncfile.createGroup('masks')
+
+        # Add new dimensions
+        ncfile.createDimension(f'instance_{name}', nGeometries)
+        ncfile.createDimension(f'node_{name}', sum(nNodesPerGeom))
+
+        # Add new variables:
+
+        # - geometry container
+        geom = ncfile.createVariable(f'geometry_container_{name}', 'i4')
+        geom.geometry_type = "polygon"
+        geom.node_count = f'node_count_{name}'
+        geom.node_coordinates = f'x_node_{name} y_node_{name}'    # variables containing spatial
+        geom.grid_mapping = "UTM_projection"
+
+        # - node count
+        nodecount = ncfile.createVariable(f'node_count_{name}', 'i4', f'instance_{name}')
+        nodecount.long_name = "count of coordinates in each instance geometry"
+        nodecount[:] = nNodesPerGeom
+
+        # - y coordinates
+        ncynode = ncfile.createVariable(f'y_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncynode.units = 'm'
+        ncynode.standard_name = 'projection_y_coordinate'
+        ncynode.axis = 'Y'
+        ncynode[:] = y
+
+        # - x coordinates
+        #todo: check what standard_name should those have?
+        # is it ok to have several x y coordinates?
+        ncxnode = ncfile.createVariable(f'x_node_{name}', 'i4', f'node_{name}', zlib=True)
+        ncxnode.units = 'm'
+        ncxnode.standard_name = 'projection_x_coordinate'
+        ncxnode.axis = 'X'
+        ncxnode[:] = x
+
+        # - vector information
+        varout = ncfile.createVariable(name, 'byte', ('time', f'instance_{name}'))
+        # todo: add a comment? before it was "Rasterized vector information."
+        varout.long_name = f"{name} mask 10m resolution"
+        varout.grid_mapping = "UTM_projection"
+        varout.geometry = f'geometry_container_{name}'
+        varout.flag_values = geom_values.values.astype('b')
+        varout.flag_meanings = ' '.join(flags)
+        varout[0, :] = geom_values
+
+        return
 
 
 if __name__ == '__main__':
@@ -741,9 +641,16 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    #workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/fix_s2_11')
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/processing_errors')
-    products = ['S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616']
+    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated')
+    workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/new_s2_02')
+    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/merge')
+
+    products = [
+            'S2A_MSIL1C_20220321T140851_N0400_R053_T31XFJ_20220321T162746',
+            'S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616'
+
+    ]
+    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 
@@ -751,7 +658,7 @@ if __name__ == '__main__':
         outdir.parent.mkdir(parents=False, exist_ok=True)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
-            indir=workdir / product,
+            indir=outdir,
             outdir=outdir)
         if conversion_object.read_ok:
             conversion_object.write_to_NetCDF(outdir, 7)
