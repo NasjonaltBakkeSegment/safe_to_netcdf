@@ -277,7 +277,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         else:
             return False
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 31, 33)):
+    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 91, 99)):
         """ Method intitializing output NetCDF product.
 
         Keyword arguments:
