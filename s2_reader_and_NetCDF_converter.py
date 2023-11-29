@@ -99,7 +99,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             return False
         self.readSunAndViewAngles(currXml)
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 32, 32)):
+    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 91, 99)):
         """ Method writing output NetCDF product.
 
         Keyword arguments:
