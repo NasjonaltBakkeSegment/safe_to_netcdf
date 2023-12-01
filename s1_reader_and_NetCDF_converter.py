@@ -17,7 +17,7 @@ import numpy as np
 import pathlib
 from scipy import interpolate
 import datetime as dt
-import safe_to_netcdf.utils as utils
+import utils as utils
 import logging
 
 
@@ -41,7 +41,13 @@ class Sentinel1_reader_and_NetCDF_converter:
     def __init__(self, product, indir, outdir, colhub_uuid=None):
         self.uuid = colhub_uuid
         self.product_id = product
-        self.input_zip = (indir / product).with_suffix('.zip')
+        file_path = indir / (product + '.zip')
+        if file_path.exists():
+            self.input_zip = file_path
+        else:
+            file_path_safe = indir / (product + '.SAFE.zip')
+            if file_path_safe.exists():
+                self.input_zip = file_path_safe
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.gcps = []  # GCPs from gdal used for generation of lat lon
         self.polarisation = []
@@ -332,16 +338,25 @@ class Sentinel1_reader_and_NetCDF_converter:
         for i in range(1, self.src.RasterCount + 1):
             band = self.src.GetRasterBand(i)
             band_metadata = band.GetMetadata()
-            varName = 'Amplitude_%s' % band_metadata['POLARISATION']
+            try:
+                varName = 'Amplitude_%s' % band_metadata['POLARISATION']
+            except:
+                varName = 'Amplitude_%s' % band_metadata['POLARIZATION']
             var = ncout.createVariable(varName, 'u2', ('time', 'y', 'x',),
                                        fill_value=0, zlib=True, complevel=compression_level,
                                        chunksizes=chunk_size)
-            var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
+            try:
+                var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARIZATION']
+            except:
+                var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
             var.units = "1"
             var.coordinates = "lat lon"
             var.grid_mapping = "crsWGS84"
             var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
-            var.polarisation = "%s" % band_metadata['POLARISATION']
+            try:
+                var.polarisation = "%s" % band_metadata['POLARIZATION']
+            except:
+                var.polarisation = "%s" % band_metadata['POLARISATION']
             logger.debug((band.GetVirtualMemArray().shape))
             var[0, :, :] = band.GetVirtualMemArray()
 
@@ -1055,8 +1070,11 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/merge')
-    products = ['S1B_IW_GRDM_1SDV_20201029T050332_20201029T050405_024023_02DA93_3C79']
+    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
+    products = ['S1A_IW_SLC__1SDV_20231030T163223_20231030T163250_050997_062607_ECF5']
+    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
+
+    products = ['S1A_EW_GRDH_1SDH_20231016T071258_20231016T071502_050787_061EE6_78D6']
 
     for product in products:
 
