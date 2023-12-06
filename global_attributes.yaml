@@ -23,6 +23,7 @@ global:
   processing_level: 'Operational'
   access_constraint: 'Open'
   license_text: 'The use of these data are covered by the Legal notice on the use of Copernicus Sentinel Data and Service Information at https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice'
+  license: 'https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice'
 
   project: 'Nasjonalt BakkeSegment'
   project_short_name: 'NBS'
