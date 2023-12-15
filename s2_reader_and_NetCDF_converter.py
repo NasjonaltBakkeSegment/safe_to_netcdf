@@ -28,8 +28,8 @@ import pyproj
 import scipy.ndimage
 from osgeo import gdal
 import geopandas as geopd
-import safe_to_netcdf.utils as utils
-import safe_to_netcdf.constants as cst
+import utils as utils
+import constants as cst
 import logging
 gdal.UseExceptions()
 
@@ -53,7 +53,13 @@ class Sentinel2_reader_and_NetCDF_converter:
     def __init__(self, product, indir, outdir, colhub_uuid=None):
         self.uuid = colhub_uuid
         self.product_id = product
-        self.input_zip = (indir / product).with_suffix('.zip')
+        file_path = indir / (product + '.zip')
+        if file_path.exists():
+            self.input_zip = file_path
+        else:
+            file_path_safe = indir / (product + '.SAFE.zip')
+            if file_path_safe.exists():
+                self.input_zip = file_path_safe
         self.baseline = self.product_id.split('_')[3]
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
         self.processing_level = 'Level-' + self.product_id.split('_')[1][4:6]
@@ -641,16 +647,14 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s2_N0400_updated')
-    workdir = pathlib.Path('/lustre/storeA/users/elodief/NBS_test_data/new_s2_02')
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/merge')
+    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
 
     products = [
-            'S2A_MSIL1C_20220321T140851_N0400_R053_T31XFJ_20220321T162746',
-            'S2A_MSIL2A_20220321T104731_N0400_R051_T32VNN_20220321T145616'
-
+            'S2A_MSIL2A_20231031T130301_N0509_R038_T27WXM_20231031T154853',
+            'S2A_MSIL1C_20231031T130301_N0509_R038_T27WWM_20231031T145931',
+            'S2B_MSIL1C_20231031T135229_N0509_R110_T25WFT_20231031T155138',
+            'S2B_MSIL2A_20231031T135229_N0509_R110_T25WDP_20231031T160709'
     ]
-    products = ['S2A_MSIL1C_20201022T100051_N0202_R122_T35WPU_20201026T035024_DTERRENGDATA']
 
     for product in products:
 

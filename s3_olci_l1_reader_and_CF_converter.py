@@ -48,7 +48,13 @@ class S3_olci_reader_and_CF_converter:
 
         """
         self.product_id = product
-        self.input_zip = (indir / product).with_suffix('.zip')
+        file_path = indir / (product + '.zip')
+        if file_path.exists():
+            self.input_zip = file_path
+        else:
+            file_path_safe = indir / (product + '.SAFE.zip')
+            if file_path_safe.exists():
+                self.input_zip = file_path_safe
         self.SAFE_dir = (outdir / self.product_id).with_suffix('.SEN3')
         self.processing_level = 'Level-' + self.product_id.split('_')[2]
         self.t0 = dt.datetime.now(tz=pytz.utc)
