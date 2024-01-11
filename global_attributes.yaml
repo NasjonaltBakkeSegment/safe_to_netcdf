@@ -1,6 +1,5 @@
 global:
-  institution: 'Norwegian Meteorological Institute'
-  institution_short_name: 'METNO'
+  institution: 'Norwegian Meteorological Institute (METNO)'
   creator_role: 'Data center contact'
   creator_name: 'NBS Helpdesk'
   creator_email: 'nbs-helpdesk@met.no'
