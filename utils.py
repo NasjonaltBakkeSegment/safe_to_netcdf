@@ -13,6 +13,7 @@ import logging
 import yaml
 from pkg_resources import resource_string
 import shapely.wkt, shapely.ops
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +319,13 @@ def get_global_attributes(self):
     if box[3] > 70:
         self.globalAttribs['collection'] += ',SIOS'
 
+    # Adding ID of parent
+    parentID = generate_uuid_parent(
+        platform=self.globalAttribs['platform'],
+        orbit=self.globalAttribs['orbit_number']
+    )
+    self.globalAttribs['related_dataset'] = f'no.met:{parentID} (parent)'
+
     return
 
 
@@ -328,3 +336,14 @@ def get_key(my_dict,val):
 
     return "There is no such Key"
 
+
+def generate_uuid_parent(platform, orbit):
+    text = f'{platform}{orbit}'
+    uuid_parent = generate_v5_uuid(text)
+    return uuid_parent
+
+def generate_v5_uuid(text):
+    # Create a version 5 uuid
+    namespace = uuid.UUID('d84d177b-5755-4e16-9b8e-6a9f335c8376')
+    uuid5 = str(uuid.uuid5(namespace, text))
+    return uuid5
