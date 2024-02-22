@@ -324,7 +324,7 @@ def get_global_attributes(self):
         platform=self.globalAttribs['platform'],
         orbit=self.globalAttribs['orbit_number']
     )
-    self.globalAttribs['related_dataset'] = f'no.met:{parentID} (parent)'
+    self.globalAttribs['related_dataset'] = f'no.met.nbs:{parentID} (parent)'
 
     return
 
