@@ -1070,7 +1070,7 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/safe_to_netcdf/')
+    workdir = pathlib.Path('/path/to/dir/')
     products = ['S1A_EW_GRDH_1SDH_20231016T071258_20231016T071502_050787_061EE6_78D6']
 
     for product in products:
