@@ -1070,10 +1070,7 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-    products = ['S1A_IW_SLC__1SDV_20231030T163223_20231030T163250_050997_062607_ECF5']
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-
+    workdir = pathlib.Path('/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/safe_to_netcdf/')
     products = ['S1A_EW_GRDH_1SDH_20231016T071258_20231016T071502_050787_061EE6_78D6']
 
     for product in products:

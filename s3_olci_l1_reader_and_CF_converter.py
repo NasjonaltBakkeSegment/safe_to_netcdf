@@ -184,11 +184,11 @@ if __name__ == '__main__':
     logger.addHandler(log_info)
 
     workdir = pathlib.Path(
-        '/home/trygveh/data/satellite_data/Sentinel-3/OCLI/L1/S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002')
+        '/path/to/dir/')
     products = [
         'S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002']
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
+    workdir = pathlib.Path('/path/to/dir/')
     products = [
         'S3B_OL_1_EFR____20211213T082842_20211213T083015_20211214T123309_0092_060_178_1980_LN1_O_NT_002']
 

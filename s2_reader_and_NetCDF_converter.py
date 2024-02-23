@@ -131,9 +131,9 @@ class Sentinel2_reader_and_NetCDF_converter:
         # frequency bands
         nx = self.reference_band.RasterXSize  # number of pixels for 10m spatial resolution
         ny = self.reference_band.RasterYSize  # number of pixels for 10m spatial resolution
-        
+
         # sun and view angles raster resolution
-        nxa, nya = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape  
+        nxa, nya = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape
 
         # output filename
         out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
@@ -165,7 +165,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             ncy.units = 'm'
             ncy.standard_name = 'projection_y_coordinate'
             ncy[:] = ynp
-            
+
             # Add projection raster band id variable
             ##########################################################
             nc_rasterband_id = ncout.createVariable('band_id', 'i4', 'raster_band_id', zlib=True, complevel=compression_level)
@@ -176,7 +176,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                       dtype=np.int8)
             nc_rasterband_id.flag_meanings = ' '.join(
                             [value for value in list(cst.s2_bands_order.values())])
-            
+
 
             # Add raw measurement layers
             # Currently adding TCI
@@ -280,7 +280,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                         elif layer in str(v):
                             logger.debug((layer, str(v), k))
                             specific_layers_kv[k] = cst.s2_l1c_layers[layer]
-                
+
 
             elif self.processing_level == 'Level-2A':
                 logger.info('Adding Level-2A specific layers')
@@ -296,11 +296,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                 logger.debug((k, v))
                 varName, longName = v.split(',')
                 SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
-                nb_rasterBands =  SourceDS.RasterCount 
-                    
+                nb_rasterBands =  SourceDS.RasterCount
+
                 if SourceDS.RasterCount > 1:
                     logger.info("Raster data contains more than one layer")
-                         
+
                 for i in range(1,nb_rasterBands+1):
                     if nb_rasterBands>1:
                         varName =  v.split(',')[0].split()[i-1]
@@ -322,7 +322,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                                                       dtype=np.int8)
                         varout.flag_meanings = ' '.join(
                             [key for key in list(cst.s2_scene_classification_flags.keys())])
-    
+
                     if GeoT[1] != 10:
                         raster_data = scipy.ndimage.zoom(input=SourceDS.GetRasterBand(i).GetVirtualMemArray(),
                                                          zoom=nx / xsize, order=0)
@@ -335,17 +335,17 @@ class Sentinel2_reader_and_NetCDF_converter:
             # Status
             logger.info('Adding sun and view angles in native resolution')
             utils.memory_use(self.t0)
-            
+
             varout_view_azimuth = ncout.createVariable('view_azimuth', np.float32, ('time','raster_band_id', 'ya', 'xa'), fill_value=netCDF4.default_fillvals['f4'],
                                                   zlib=True, complevel=compression_level)
             varout_view_azimuth.units = 'degree'
-            varout_view_azimuth.long_name = 'Viewing incidence azimuth angle' 
+            varout_view_azimuth.long_name = 'Viewing incidence azimuth angle'
             varout_view_azimuth.comment = 'Original 22x22 pixel resolution'
 
             varout_view_zenith = ncout.createVariable('view_zenith', np.float32, ('time','raster_band_id', 'ya', 'xa'), fill_value=netCDF4.default_fillvals['f4'],
                                                   zlib=True, complevel=compression_level)
             varout_view_zenith.units = 'degree'
-            varout_view_zenith.long_name = 'Viewing incidence zenith angle' 
+            varout_view_zenith.long_name = 'Viewing incidence zenith angle'
             varout_view_zenith.comment = 'Original 22x22 pixel resolution'
 
             counter = 1
@@ -360,11 +360,11 @@ class Sentinel2_reader_and_NetCDF_converter:
                     varout.comment = 'Original 22x22 pixel resolution'
                     varout[0, :, :] = v
                 elif 'zenith' in k :
-                    band_id = k.split('_')[-1]                    
-                    varout_view_zenith[0,utils.get_key(cst.s2_bands_order,band_id), :, :] = v                
+                    band_id = k.split('_')[-1]
+                    varout_view_zenith[0,utils.get_key(cst.s2_bands_order,band_id), :, :] = v
                 elif 'azimuth' in k :
-                    band_id = k.split('_')[-1]                    
-                    varout_view_azimuth[0,utils.get_key(cst.s2_bands_order,band_id), :, :] = v                
+                    band_id = k.split('_')[-1]
+                    varout_view_azimuth[0,utils.get_key(cst.s2_bands_order,band_id), :, :] = v
 
                 counter += 1
 
@@ -647,7 +647,7 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
+    workdir = pathlib.Path('/path/to/dir/')
 
     products = [
             'S2A_MSIL2A_20231031T130301_N0509_R038_T27WXM_20231031T154853',

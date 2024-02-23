@@ -322,7 +322,9 @@ def get_global_attributes(self):
     # Adding ID of parent
     parentID = generate_uuid_parent(
         platform=self.globalAttribs['platform'],
-        orbit=self.globalAttribs['orbit_number']
+        instrument=self.globalAttribs['instrument'],
+        producttype=self.globalAttribs['product_type'],
+        orbit=self.globalAttribs['orbit_number'],
     )
     self.globalAttribs['related_dataset'] = f'no.met.nbs:{parentID} (parent)'
 
@@ -337,8 +339,8 @@ def get_key(my_dict,val):
     return "There is no such Key"
 
 
-def generate_uuid_parent(platform, orbit):
-    text = f'{platform}{orbit}'
+def generate_uuid_parent(platform, instrument, producttype, orbit):
+    text = f'{platform}{instrument}{producttype}{orbit}'
     uuid_parent = generate_v5_uuid(text)
     return uuid_parent
 
