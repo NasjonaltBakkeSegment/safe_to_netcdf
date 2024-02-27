@@ -4,3 +4,5 @@ numpy
 gdal>=2.1.1
 pyproj
 geopandas
+lxml
+pyyaml
