@@ -13,8 +13,8 @@ import xarray as xr
 import logging
 import sys
 import pathlib
-import utils
-import constants as cst
+from . import utils
+from . import constants as cst
 
 logger = logging.getLogger(__name__)
 

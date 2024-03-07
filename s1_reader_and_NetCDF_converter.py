@@ -17,7 +17,7 @@ import numpy as np
 import pathlib
 from scipy import interpolate
 import datetime as dt
-import utils as utils
+from . import utils as utils
 import logging
 
 
