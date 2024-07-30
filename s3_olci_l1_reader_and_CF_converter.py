@@ -107,7 +107,25 @@ class S3_olci_reader_and_CF_converter:
         # Add time dimension
         # Do afterwards as dimensions different to the other variables
         time_file = [s for s in nc_files if "time_coordinates.nc" in str(s)][0]
-        time = xr.open_dataset(time_file)
+        time = xr.open_dataset(time_file, decode_times=False)
+        # Check and handle time units
+        units = time['time_stamp'].attrs.get('units', '')
+        base_unit, ref_date = self.parse_units(units)
+        if base_unit and ref_date:
+            # Convert time values to seconds
+            time_values = time['time_stamp'].values
+            print('\n\n')
+            print(time_values)
+            time_values_seconds = self.convert_time_units(time_values, base_unit, ref_date)
+            print(time_values_seconds)
+            # Update dataset with converted values
+            time['time_stamp'].values = time_values_seconds
+            time['time_stamp'].attrs['units'] = 'seconds since ' + ref_date.strftime("%Y-%m-%d %H:%M:%S")
+            logger.info("Converted time values to seconds.")
+        else:
+            logger.warning(f"Units are not recognized or could not be parsed. Units: {units}")
+
+
         data_tmp = xr.combine_by_coords([ds, time], combine_attrs='override')
         logger.debug('Time to open and combine nc files')
         utils.memory_use(t1)
@@ -164,18 +182,49 @@ class S3_olci_reader_and_CF_converter:
         data.attrs['history'] = data.attrs['history'] + f'.{self.t0.isoformat()}:' \
                                                         f' Converted from SAFE to NetCDF/CF by the NBS team.'
 
+        # Ensuring datatypes are correct
+        encoding = {
+            'time': {
+                'dtype': 'int32'
+            }
+        }
         # Write netcdf file
         t2 = dt.datetime.now(tz=pytz.utc)
         # todo: test with and without load
         # todo: test compression levels. as is, using the encodings from input nc.
         # if we want to change, need to update encoding for each variable
         # todo: use chunks or not? very unconvinced myself
-        data.load().to_netcdf(ncout)
+        data.load().to_netcdf(ncout, encoding=encoding)
         logger.debug('Time to write nc file')
         utils.memory_use(t2)
 
         return True
 
+    def parse_units(self, units):
+        """ Parse the units string to extract the base unit and reference date. """
+        if 'since' in units:
+            base_unit, ref_date_str = units.split('since')
+            base_unit = base_unit.strip()
+            ref_date_str = ref_date_str.strip().strip('"')
+            try:
+                ref_date = dt.datetime.strptime(ref_date_str, "%Y-%m-%d %H:%M:%S")
+                return base_unit, ref_date
+            except ValueError:
+                logger.error(f"Error parsing reference date from units: {ref_date_str}")
+                return None, None
+        else:
+            return None, None
+
+    def convert_time_units(self, time_values, base_unit, ref_date):
+        """ Convert time values from the specified base unit to seconds. """
+        if base_unit == "microseconds":
+            return time_values  / 1_000_000
+        elif base_unit == "milliseconds":
+            return time_values / 1_000
+        elif base_unit == "seconds":
+            return time_values
+        else:
+            raise ValueError(f"Unsupported time unit: {base_unit}")
 
 if __name__ == '__main__':
 
@@ -201,7 +250,7 @@ if __name__ == '__main__':
     ##    'S3A_OL_1_EFR____20211124T104042_20211124T104307_20211124T130348_0145_079_051_1980_LN1_O_NR_002',
     ##]
 
-    workdir = pathlib.Path('/home/alessioc/Documents/S3_products')
+    workdir = pathlib.Path('/home/alessioc/data/S3_products')
     products = ['S3A_OL_1_EFR____20240724T101655_20240724T101955_20240724T121332_0179_115_065_2160_PS1_O_NR_004.SEN3']
 
     for product in products:
