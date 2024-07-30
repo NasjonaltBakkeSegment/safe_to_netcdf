@@ -49,6 +49,7 @@ class S3_olci_reader_and_CF_converter:
         """
         self.product_id = product
         file_path = indir / (product + '.zip')
+        print(file_path)
         if file_path.exists():
             self.input_zip = file_path
         else:
@@ -120,6 +121,9 @@ class S3_olci_reader_and_CF_converter:
                 data[v].attrs['standard_name'] = 'upwelling_radiance_per_unit_wavelength_in_air'
                 # Convert from uint to int to be CF
                 data[v] = data[v].astype('int16', copy=False)
+                data[v].attrs['valid_min'] = data[v].attrs['valid_min'].astype('int16', copy=False)
+                data[v].attrs['valid_max'] = data[v].attrs['valid_max'].astype('int16', copy=False)
+
         # todo: check lat-lon-time- variable attributes
         ## if v == 'altitude':
         ##     attribs['coordinates'] = 'lon lat'
@@ -183,25 +187,28 @@ if __name__ == '__main__':
         logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path(
-        '/home/trygveh/data/satellite_data/Sentinel-3/OCLI/L1/S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002')
-    products = [
-        'S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002']
+    # workdir = pathlib.Path(
+    #     '/home/trygveh/data/satellite_data/Sentinel-3/OCLI/L1/S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002')
+    # products = [
+    #     'S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002']
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
-    products = [
-        'S3B_OL_1_EFR____20211213T082842_20211213T083015_20211214T123309_0092_060_178_1980_LN1_O_NT_002']
+    # workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
+    # products = [
+    #     'S3B_OL_1_EFR____20211213T082842_20211213T083015_20211214T123309_0092_060_178_1980_LN1_O_NT_002']
 
     ##workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s3')
     ##products = [
     ##    'S3A_OL_1_EFR____20211124T104042_20211124T104307_20211124T130348_0145_079_051_1980_LN1_O_NR_002',
     ##]
 
+    workdir = pathlib.Path('/home/alessioc/Documents/S3_products')
+    products = ['S3A_OL_1_EFR____20240724T101655_20240724T101955_20240724T121332_0179_115_065_2160_PS1_O_NR_004.SEN3']
+
     for product in products:
-        outdir = workdir / product
+        outdir = workdir / product.split('.')[0]
         outdir.parent.mkdir(parents=False, exist_ok=True)
         s3_obj = S3_olci_reader_and_CF_converter(
             product=product,
-            indir=workdir / product,
+            indir=workdir,
             outdir=outdir)
         s3_obj.write_to_NetCDF(outdir, compression_level=1)
