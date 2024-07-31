@@ -159,6 +159,14 @@ class S3_olci_reader_and_CF_converter:
                 data[v].attrs['standard_name'] = 'altitude'
                 data[v].attrs['coverage_content_type'] = 'auxiliaryInformation'
                 data[v].attrs['positive'] = 'up'
+        
+        # correcting lat and lon min and max values
+            if v == 'lat':
+                data[v].attrs['valid_min'] = -90
+                data[v].attrs['valid_max'] = 90
+            if v == 'lon':
+                data[v].attrs['valid_min'] = -180
+                data[v].attrs['valid_max'] = 180
 
         ## if 'coordinates' in attribs.keys():
         ##     attribs['coordinates'] = 'lon lat'
