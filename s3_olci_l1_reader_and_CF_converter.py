@@ -137,22 +137,28 @@ class S3_olci_reader_and_CF_converter:
         # Format variables
         data = data_tmp.rename({'latitude': 'lat', 'longitude': 'lon', 'time_stamp': 'time'})
         for v in data.variables:
+            # attribs = data[v].attrs
             if v.endswith('_radiance'):
                 data[v].attrs['coordinates'] = 'time altitude lat lon'
+                data[v].attrs['coverage_content_type'] = 'physicalMeasurement'
+
                 # 'standard_name' in input nc file is not actually a standard name, so update
                 data[v].attrs['standard_name'] = 'upwelling_radiance_per_unit_wavelength_in_air'
                 # Convert from uint to int to be CF
                 data[v] = data[v].astype('int16', copy=False)
                 data[v].attrs['valid_min'] = data[v].attrs['valid_min'].astype('int16', copy=False)
                 data[v].attrs['valid_max'] = data[v].attrs['valid_max'].astype('int16', copy=False)
+                # Remove the ancillary attribute if it exists
+                if 'ancillary_variables' in data[v].attrs:
+                    del data[v].attrs['ancillary_variables']
 
         # todo: check lat-lon-time- variable attributes
-        ## if v == 'altitude':
-        ##     attribs['coordinates'] = 'lon lat'
-        ##     attribs['grid_mapping'] = 'crsWGS84'
-        ##     attribs['standard_name'] = 'altitude'
-        ##     attribs['coverage_content_type'] = 'auxiliaryInformation'
-        ##     attribs['positive'] = 'up'
+            if v == 'altitude':
+                data[v].attrs['coordinates'] = 'lon lat'
+                # data[v].attrs['grid_mapping'] = 'crsWGS84'
+                data[v].attrs['standard_name'] = 'altitude'
+                data[v].attrs['coverage_content_type'] = 'auxiliaryInformation'
+                data[v].attrs['positive'] = 'up'
 
         ## if 'coordinates' in attribs.keys():
         ##     attribs['coordinates'] = 'lon lat'
