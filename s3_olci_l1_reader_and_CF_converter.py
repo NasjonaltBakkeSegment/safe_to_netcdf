@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
     - should be ACDD compliant
 
     ISSUES:
-    - int64: not supported in dap2. will come in dap4 https://www.unidata.ucar.edu/support/help/MailArchives/thredds/msg01762.html
+    - (FIXED) int64: not supported in dap2. will come in dap4 https://www.unidata.ucar.edu/support/help/MailArchives/thredds/msg01762.html
 """
 
 
@@ -115,11 +115,7 @@ class S3_olci_reader_and_CF_converter:
 
         if len(time_values) > 0:
             base_unit, ref_date = self.parse_units(units)
-            print('\n\n')
-            print(ref_date)
             ref_time = time_decoded['time_stamp'].values[0]
-            print(ref_time)
-            print(time_values)
 
             if base_unit == 'microseconds':
                 time_values_milliseconds = (time_values - time_values[0]) / 1_000
@@ -129,9 +125,10 @@ class S3_olci_reader_and_CF_converter:
                 time_values_milliseconds = (time_values - time_values[0]) * 1_000
             else:
                 raise ValueError(f'Unsupported time unit: {base_unit}')
-            print(time_values_milliseconds)
         time['time_stamp'].values = time_values_milliseconds
         time['time_stamp'].attrs['units'] = f'milliseconds since {ref_time}'
+        time['time_stamp'].attrs['long_name'] = f'Elapsed time since {ref_time}'
+
 
         data_tmp = xr.combine_by_coords([ds, time], combine_attrs='override')
         logger.debug('Time to open and combine nc files')
@@ -222,7 +219,7 @@ class S3_olci_reader_and_CF_converter:
         else:
             return None, None
 
-  
+
 if __name__ == '__main__':
 
     # Log to console
