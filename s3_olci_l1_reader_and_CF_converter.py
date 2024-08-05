@@ -13,6 +13,7 @@ import xarray as xr
 import logging
 import sys
 import pathlib
+import numpy as np
 from . import utils
 from . import constants as cst
 
@@ -162,11 +163,11 @@ class S3_olci_reader_and_CF_converter:
         
         # correcting lat and lon min and max values
             if v == 'lat':
-                data[v].attrs['valid_min'] = -90
-                data[v].attrs['valid_max'] = 90
+                data[v].attrs['valid_min'] = np.int32(-90)
+                data[v].attrs['valid_max'] = np.int32(90)
             if v == 'lon':
-                data[v].attrs['valid_min'] = -180
-                data[v].attrs['valid_max'] = 180
+                data[v].attrs['valid_min'] = np.int32(-180)
+                data[v].attrs['valid_max'] = np.int32(180)
 
         ## if 'coordinates' in attribs.keys():
         ##     attribs['coordinates'] = 'lon lat'
@@ -258,8 +259,11 @@ if __name__ == '__main__':
     ##    'S3A_OL_1_EFR____20211124T104042_20211124T104307_20211124T130348_0145_079_051_1980_LN1_O_NR_002',
     ##]
 
-    workdir = pathlib.Path('/home/alessioc/data/S3_products')
-    products = ['S3A_OL_1_EFR____20240724T101655_20240724T101955_20240724T121332_0179_115_065_2160_PS1_O_NR_004.SEN3']
+    workdir = pathlib.Path('/home/alessio/MET/data/S3_products') #pathlib.Path('/home/alessioc/data/S3_products')
+    products = ['S3A_OL_1_EFR____20240724T101655_20240724T101955_20240724T121332_0179_115_065_2160_PS1_O_NR_004.SEN3',
+                'S3A_OL_1_EFR____20240805T081842_20240805T082142_20240805T102309_0179_115_235_1800_PS1_O_NR_004.SEN3',
+                'S3A_OL_1_ERR____20240805T081018_20240805T085434_20240805T102258_2656_115_235______PS1_O_NR_004.SEN3',
+                'S3A_OL_2_LFR____20240805T082442_20240805T082742_20240805T103359_0179_115_235_2160_PS1_O_NR_002.SEN3']
 
     for product in products:
         outdir = workdir / product.split('.')[0]
