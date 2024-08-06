@@ -185,6 +185,7 @@ class S3_olci_reader_and_CF_converter:
         data.attrs['id'] = data.attrs.pop('product_name')
         data.attrs['processing_level'] = self.processing_level
         data.attrs['date_created'] = self.t0.isoformat()
+        # Geospatial max and min
         data.attrs['geospatial_lat_min'] = data['lat'].min().values
         data.attrs['geospatial_lat_max'] = data['lat'].max().values
         data.attrs['geospatial_lon_min'] = data['lon'].min().values
@@ -192,6 +193,17 @@ class S3_olci_reader_and_CF_converter:
         data.attrs['geospatial_vertical_min'] = data['altitude'].min().values
         data.attrs['geospatial_vertical_max'] = data['altitude'].max().values
         data.attrs['geospatial_vertical_positive'] = 'up'
+        # Geospatial bounds
+        data.attrs['geospatial_bounds'] = (
+            f"POLYGON(({data.attrs['geospatial_lon_min']} {data.attrs['geospatial_lat_min']}, "
+            f"{data.attrs['geospatial_lon_max']} {data.attrs['geospatial_lat_min']}, "
+            f"{data.attrs['geospatial_lon_max']} {data.attrs['geospatial_lat_max']}, "
+            f"{data.attrs['geospatial_lon_min']} {data.attrs['geospatial_lat_max']}, "
+            f"{data.attrs['geospatial_lon_min']} {data.attrs['geospatial_lat_min']}))"
+        )
+        data.attrs['geospatial_bounds_crs'] = 'EPSG:4326'  # Assuming WGS84
+        data.attrs['geospatial_bounds_vertical_crs'] = 'EPSG:7030'  # Assuming ETRS89 height
+        # Time coverage
         data.attrs['time_coverage_start'] = data.attrs.pop("start_time")
         data.attrs['time_coverage_end'] = data.attrs.pop("stop_time")
         # Calculate and add duration
