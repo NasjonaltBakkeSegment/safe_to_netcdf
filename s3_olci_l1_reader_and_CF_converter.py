@@ -188,6 +188,8 @@ class S3_olci_reader_and_CF_converter:
         data.attrs['geospatial_lat_max'] = data['lat'].max().values
         data.attrs['geospatial_lon_min'] = data['lon'].min().values
         data.attrs['geospatial_lon_max'] = data['lon'].max().values
+        data.attrs['geospatial_vertical_min'] = data['altitude'].min().values
+        data.attrs['geospatial_vertical_max'] = data['altitude'].max().values
         data.attrs['time_coverage_start'] = data.attrs.pop("start_time")
         data.attrs['time_coverage_end'] = data.attrs.pop("stop_time")
         data.attrs['history'] = data.attrs['history'] + f'.{self.t0.isoformat()}:' \
