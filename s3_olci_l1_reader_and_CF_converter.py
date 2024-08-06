@@ -14,6 +14,7 @@ import logging
 import sys
 import pathlib
 import numpy as np
+import isodate
 from . import utils
 from . import constants as cst
 
@@ -192,6 +193,19 @@ class S3_olci_reader_and_CF_converter:
         data.attrs['geospatial_vertical_max'] = data['altitude'].max().values
         data.attrs['time_coverage_start'] = data.attrs.pop("start_time")
         data.attrs['time_coverage_end'] = data.attrs.pop("stop_time")
+        # Calculate and add duration
+        start_time_str = data.attrs['time_coverage_start'].replace('Z', '+00:00')
+        end_time_str = data.attrs['time_coverage_end'].replace('Z', '+00:00')
+        start_time = dt.datetime.fromisoformat(start_time_str)
+        end_time = dt.datetime.fromisoformat(end_time_str)
+        duration = end_time - start_time
+        data.attrs['time_coverage_duration'] = isodate.duration_isoformat(duration)
+        # Calculate and add resolution
+        time_diffs = np.diff(time_values_milliseconds)
+        avg_resolution_ms = np.mean(time_diffs)
+        avg_resolution_s = avg_resolution_ms / 1000
+        data.attrs['time_coverage_resolution'] = isodate.duration_isoformat(dt.timedelta(seconds=avg_resolution_s))
+
         data.attrs['history'] = data.attrs['history'] + f'.{self.t0.isoformat()}:' \
                                                         f' Converted from SAFE to NetCDF/CF by the NBS team.'
 
