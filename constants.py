@@ -8,10 +8,18 @@ Constants describing Sentinel satellites
 
 global_attributes = {
      'project': 'Norwegian National Ground Segment for Satellite Data',
-     'institution': 'Norwegian Meteorological Institute',
+     'institution': 'Norwegian Meteorological Institute (METNO)',
      'source': 'surface observation',
      'license': 'Freely Distributed',
-     'acknowledgement': 'Copernicus EU'
+     'acknowledgement': 'Copernicus EU',
+     'creator_type': 'institution',
+     'creator_institution': 'Norwegian Meteorological Institute',
+     'creator_name': 'NBS Helpdesk',
+     'creator_email': 'nbs-helpdesk@met.no',
+     'creator_url': 'https://met.no',
+     'publisher_name': 'NBS Helpdesk',
+     'publisher_email': 'nbs-helpdesk@met.no',
+     'publisher_url': 'https://met.no'
 }
 
 # ------------- Sentinel 3 -------------
