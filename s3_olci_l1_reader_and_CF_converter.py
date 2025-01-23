@@ -13,8 +13,10 @@ import xarray as xr
 import logging
 import sys
 import pathlib
-import utils
-import constants as cst
+import numpy as np
+import isodate
+from . import utils
+from . import constants as cst
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
     - should be ACDD compliant
 
     ISSUES:
-    - int64: not supported in dap2. will come in dap4 https://www.unidata.ucar.edu/support/help/MailArchives/thredds/msg01762.html
+    - (FIXED) int64: not supported in dap2. will come in dap4 https://www.unidata.ucar.edu/support/help/MailArchives/thredds/msg01762.html
 """
 
 
@@ -49,6 +51,7 @@ class S3_olci_reader_and_CF_converter:
         """
         self.product_id = product
         file_path = indir / (product + '.zip')
+        print(file_path)
         if file_path.exists():
             self.input_zip = file_path
         else:
@@ -106,7 +109,29 @@ class S3_olci_reader_and_CF_converter:
         # Add time dimension
         # Do afterwards as dimensions different to the other variables
         time_file = [s for s in nc_files if "time_coordinates.nc" in str(s)][0]
-        time = xr.open_dataset(time_file)
+        time = xr.open_dataset(time_file, decode_times=False)
+        time_decoded = xr.open_dataset(time_file)
+
+        time_values = time['time_stamp'].values
+        units = time['time_stamp'].attrs.get('units', '')
+
+        if len(time_values) > 0:
+            base_unit, ref_date = self.parse_units(units)
+            ref_time = time_decoded['time_stamp'].values[0]
+
+            if base_unit == 'microseconds':
+                time_values_milliseconds = (time_values - time_values[0]) / 1_000
+            elif base_unit == 'milliseconds':
+                time_values_milliseconds = time_values - time_values[0]
+            elif base_unit == 'seconds':
+                time_values_milliseconds = (time_values - time_values[0]) * 1_000
+            else:
+                raise ValueError(f'Unsupported time unit: {base_unit}')
+        time['time_stamp'].values = time_values_milliseconds
+        time['time_stamp'].attrs['units'] = f'milliseconds since {ref_time}'
+        time['time_stamp'].attrs['long_name'] = f'Elapsed time since {ref_time}'
+
+
         data_tmp = xr.combine_by_coords([ds, time], combine_attrs='override')
         logger.debug('Time to open and combine nc files')
         utils.memory_use(t1)
@@ -114,19 +139,28 @@ class S3_olci_reader_and_CF_converter:
         # Format variables
         data = data_tmp.rename({'latitude': 'lat', 'longitude': 'lon', 'time_stamp': 'time'})
         for v in data.variables:
+            # attribs = data[v].attrs
             if v.endswith('_radiance'):
                 data[v].attrs['coordinates'] = 'time altitude lat lon'
+                data[v].attrs['coverage_content_type'] = 'physicalMeasurement'
+
                 # 'standard_name' in input nc file is not actually a standard name, so update
                 data[v].attrs['standard_name'] = 'upwelling_radiance_per_unit_wavelength_in_air'
                 # Convert from uint to int to be CF
                 data[v] = data[v].astype('int16', copy=False)
+                data[v].attrs['valid_min'] = data[v].attrs['valid_min'].astype('int16', copy=False)
+                data[v].attrs['valid_max'] = data[v].attrs['valid_max'].astype('int16', copy=False)
+                # Remove the ancillary attribute if it exists
+                if 'ancillary_variables' in data[v].attrs:
+                    del data[v].attrs['ancillary_variables']
+
         # todo: check lat-lon-time- variable attributes
-        ## if v == 'altitude':
-        ##     attribs['coordinates'] = 'lon lat'
-        ##     attribs['grid_mapping'] = 'crsWGS84'
-        ##     attribs['standard_name'] = 'altitude'
-        ##     attribs['coverage_content_type'] = 'auxiliaryInformation'
-        ##     attribs['positive'] = 'up'
+            if v == 'altitude':
+                data[v].attrs['coordinates'] = 'lon lat'
+                # data[v].attrs['grid_mapping'] = 'crsWGS84'
+                data[v].attrs['standard_name'] = 'altitude'
+                data[v].attrs['coverage_content_type'] = 'auxiliaryInformation'
+                data[v].attrs['positive'] = 'up'
 
         ## if 'coordinates' in attribs.keys():
         ##     attribs['coordinates'] = 'lon lat'
@@ -151,26 +185,75 @@ class S3_olci_reader_and_CF_converter:
         data.attrs['id'] = data.attrs.pop('product_name')
         data.attrs['processing_level'] = self.processing_level
         data.attrs['date_created'] = self.t0.isoformat()
+        # Geospatial max and min
         data.attrs['geospatial_lat_min'] = data['lat'].min().values
         data.attrs['geospatial_lat_max'] = data['lat'].max().values
         data.attrs['geospatial_lon_min'] = data['lon'].min().values
         data.attrs['geospatial_lon_max'] = data['lon'].max().values
+        data.attrs['geospatial_vertical_min'] = data['altitude'].min().values
+        data.attrs['geospatial_vertical_max'] = data['altitude'].max().values
+        data.attrs['geospatial_vertical_positive'] = 'up'
+        # Geospatial bounds
+        data.attrs['geospatial_bounds'] = (
+            f"POLYGON(({data.attrs['geospatial_lon_min']} {data.attrs['geospatial_lat_min']}, "
+            f"{data.attrs['geospatial_lon_max']} {data.attrs['geospatial_lat_min']}, "
+            f"{data.attrs['geospatial_lon_max']} {data.attrs['geospatial_lat_max']}, "
+            f"{data.attrs['geospatial_lon_min']} {data.attrs['geospatial_lat_max']}, "
+            f"{data.attrs['geospatial_lon_min']} {data.attrs['geospatial_lat_min']}))"
+        )
+        data.attrs['geospatial_bounds_crs'] = 'EPSG:4326'  # Assuming WGS84
+        data.attrs['geospatial_bounds_vertical_crs'] = 'EPSG:7030'  # Assuming ETRS89 height
+        # Time coverage
         data.attrs['time_coverage_start'] = data.attrs.pop("start_time")
         data.attrs['time_coverage_end'] = data.attrs.pop("stop_time")
+        # Calculate and add duration
+        start_time_str = data.attrs['time_coverage_start'].replace('Z', '+00:00')
+        end_time_str = data.attrs['time_coverage_end'].replace('Z', '+00:00')
+        start_time = dt.datetime.fromisoformat(start_time_str)
+        end_time = dt.datetime.fromisoformat(end_time_str)
+        duration = end_time - start_time
+        data.attrs['time_coverage_duration'] = isodate.duration_isoformat(duration)
+        # Calculate and add resolution
+        time_diffs = np.diff(time_values_milliseconds)
+        avg_resolution_ms = np.mean(time_diffs)
+        avg_resolution_s = avg_resolution_ms / 1000
+        data.attrs['time_coverage_resolution'] = isodate.duration_isoformat(dt.timedelta(seconds=avg_resolution_s))
+
         data.attrs['history'] = data.attrs['history'] + f'.{self.t0.isoformat()}:' \
                                                         f' Converted from SAFE to NetCDF/CF by the NBS team.'
 
+        # Ensuring datatypes are correct
+        encoding = {
+            'time': {
+                'dtype': 'int32'
+            }
+        }
         # Write netcdf file
         t2 = dt.datetime.now(tz=pytz.utc)
         # todo: test with and without load
         # todo: test compression levels. as is, using the encodings from input nc.
         # if we want to change, need to update encoding for each variable
         # todo: use chunks or not? very unconvinced myself
-        data.load().to_netcdf(ncout)
+        data.load().to_netcdf(ncout, encoding=encoding)
         logger.debug('Time to write nc file')
         utils.memory_use(t2)
 
         return True
+
+    def parse_units(self, units):
+        """ Parse the units string to extract the base unit and reference date. """
+        if 'since' in units:
+            base_unit, ref_date_str = units.split('since')
+            base_unit = base_unit.strip()
+            ref_date_str = ref_date_str.strip().strip('"')
+            try:
+                ref_date = dt.datetime.strptime(ref_date_str, "%Y-%m-%d %H:%M:%S")
+                return base_unit, ref_date
+            except ValueError:
+                logger.error(f"Error parsing reference date from units: {ref_date_str}")
+                return None, None
+        else:
+            return None, None
 
 
 if __name__ == '__main__':
@@ -183,25 +266,31 @@ if __name__ == '__main__':
         logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path(
-        '/home/trygveh/data/satellite_data/Sentinel-3/OCLI/L1/S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002')
-    products = [
-        'S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002']
+    # workdir = pathlib.Path(
+    #     '/home/trygveh/data/satellite_data/Sentinel-3/OCLI/L1/S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002')
+    # products = [
+    #     'S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002']
 
-    workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
-    products = [
-        'S3B_OL_1_EFR____20211213T082842_20211213T083015_20211214T123309_0092_060_178_1980_LN1_O_NT_002']
+    # workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
+    # products = [
+    #     'S3B_OL_1_EFR____20211213T082842_20211213T083015_20211214T123309_0092_060_178_1980_LN1_O_NT_002']
 
     ##workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s3')
     ##products = [
     ##    'S3A_OL_1_EFR____20211124T104042_20211124T104307_20211124T130348_0145_079_051_1980_LN1_O_NR_002',
     ##]
 
+    workdir = pathlib.Path('/home/alessio/MET/data/S3_products') #pathlib.Path('/home/alessioc/data/S3_products')
+    products = ['S3A_OL_1_EFR____20240724T101655_20240724T101955_20240724T121332_0179_115_065_2160_PS1_O_NR_004.SEN3',
+                'S3A_OL_1_EFR____20240805T081842_20240805T082142_20240805T102309_0179_115_235_1800_PS1_O_NR_004.SEN3',
+                'S3A_OL_1_ERR____20240805T081018_20240805T085434_20240805T102258_2656_115_235______PS1_O_NR_004.SEN3',
+                'S3A_OL_2_LFR____20240805T082442_20240805T082742_20240805T103359_0179_115_235_2160_PS1_O_NR_002.SEN3']
+
     for product in products:
-        outdir = workdir / product
+        outdir = workdir / product.split('.')[0]
         outdir.parent.mkdir(parents=False, exist_ok=True)
         s3_obj = S3_olci_reader_and_CF_converter(
             product=product,
-            indir=workdir / product,
+            indir=workdir,
             outdir=outdir)
         s3_obj.write_to_NetCDF(outdir, compression_level=1)
