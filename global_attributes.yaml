@@ -68,6 +68,11 @@ S2B:
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_2b'
   instrument: 'Multi-Spectral Imager for Sentinel-2'
   instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/msi_sentinel_2b'
+S2C:
+  platform: 'Sentinel-2C'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_2c'
+  instrument: 'Multi-Spectral Imager for Sentinel-2'
+  instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/msi_sentinel_2c'
 S1A:
   platform: 'Sentinel-1A'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1a'
@@ -78,4 +83,8 @@ S1B:
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1b'
   instrument: 'Synthetic Aperture Radar (C-band)'
   instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/sar_c_sentinel_1'
-
+S1C:
+  platform: 'Sentinel-1C'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1c'
+  instrument: 'Synthetic Aperture Radar (C-band)'
+  instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/sar_c_sentinel_1'
