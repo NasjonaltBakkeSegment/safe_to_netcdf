@@ -17,7 +17,7 @@ import numpy as np
 import pathlib
 from scipy import interpolate
 import datetime as dt
-from . import utils as utils
+import utils as utils
 import logging
 
 
@@ -42,6 +42,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.uuid = colhub_uuid
         self.product_id = product
         file_path = indir / (product + '.zip')
+        print(file_path)
         if file_path.exists():
             self.input_zip = file_path
         else:

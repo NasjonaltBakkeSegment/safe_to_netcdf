@@ -28,8 +28,8 @@ import pyproj
 import scipy.ndimage
 from osgeo import gdal
 import geopandas as geopd
-from . import utils as utils
-from . import constants as cst
+import utils as utils
+import constants as cst
 import logging
 gdal.UseExceptions()
 
