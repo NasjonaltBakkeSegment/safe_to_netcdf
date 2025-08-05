@@ -16,25 +16,67 @@
 #
 # Need to use gdal 2.1.1-> to have support of the SAFE reader
 
-import pathlib
-import sys
+# # Standard library imports
+# import os
+# import re
+# import sys
+# import math
+# import logging
+# import pathlib
+# from pathlib import Path
+# from collections import defaultdict
+# import datetime as dt
+# import xml.etree.ElementTree as ET
+# import argparse
+# import io
+# from io import BytesIO
+# import tempfile
+
+# # Third-party library imports
+# import numpy as np
+# import netCDF4
+# from netCDF4 import Dataset
+# import xarray as xr
+# import rasterio
+# from rasterio.io import MemoryFile
+# import rioxarray as rio
+# import imageio.v3 as iio
+# import scipy.ndimage
+# import geopandas as geopd
+# import pyproj
+# from pyproj import CRS
+# from pyproj import CRS as PyCRS
+# from affine import Affine
+
+# # Custom library imports
+# import utils as utils
+# import constants as cst
+
+
+# Standard library imports
 import math
+import logging
+from pathlib import Path
 from collections import defaultdict
 import datetime as dt
-import netCDF4
-import numpy as np
-import osgeo.osr as osr
-import pyproj
-import scipy.ndimage
-from osgeo import gdal
-import geopandas as geopd
-from . import utils as utils
-from . import constants as cst
-import logging
-gdal.UseExceptions()
 
+# Third-party library imports
+import numpy as np
+import netCDF4
+import rasterio
+import scipy.ndimage
+import geopandas as geopd
+import pyproj
+from pyproj import CRS
+from pyproj import CRS as PyCRS
+
+
+# Custom library imports
+import utils as utils
+import constants as cst
 
 logger = logging.getLogger(__name__)
+
 
 
 class Sentinel2_reader_and_NetCDF_converter:
@@ -47,13 +89,18 @@ class Sentinel2_reader_and_NetCDF_converter:
 
         Keyword arguments:
         SAFE_file -- absolute path to zipped file
-        SAFE_outpath -- output storage location for unzipped SAFE product
+        SAFE_outdir -- output storage location for unzipped SAFE product
         '''
 
     def __init__(self, product, indir, outdir, colhub_uuid=None):
+        
+
         self.uuid = colhub_uuid
         self.product_id = product
         file_path = indir / (product + '.zip')
+        print(f'Indir = {indir}')
+        print(f'Product = {product}')
+        print(f'Path = {file_path}')
         if file_path.exists():
             self.input_zip = file_path
         else:
@@ -76,9 +123,9 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.image_list_dterreng = []
         self.read_ok = True
 
-        self.main()
+        #self.run()
 
-    def main(self):
+    def run(self):
         """ Main method for traversing and reading key values from SAFE
             directory.
         """
@@ -105,40 +152,51 @@ class Sentinel2_reader_and_NetCDF_converter:
             return False
         self.readSunAndViewAngles(currXml)
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 91, 99)):
-        """ Method writing output NetCDF product.
 
-        Keyword arguments:
-        nc_outpath -- output path where NetCDF file should be stored
-        compression_level -- compression level on output NetCDF file (1-9)
-        chunk_size -- chunk_size
-        """
-
+    def write_to_NetCDF(self, nc_out, outdir, product, compression_level, chunk_size=(1, 91, 99)):
         logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
-
-        # Status
-        logger.info('Creating NetCDF file')
         utils.memory_use(self.t0)
 
-        # Deciding a reference band
-        #todo dterreng warning coming from here?
-        # yes -> self.src.GetSubDatasets() ok but the gdal.Open does not work
-        # add break? how to remove warning from dterr?
-        for k, v in self.src.GetSubDatasets():
-            if v.find('10m') > 0:
-                self.reference_band = gdal.Open(k)
+        SAFE_root = Path(outdir) / f"{product}.SAFE"
 
-        # frequency bands
-        nx = self.reference_band.RasterXSize  # number of pixels for 10m spatial resolution
-        ny = self.reference_band.RasterYSize  # number of pixels for 10m spatial resolution
+        #print(f'SAFE_root: ------------------- {SAFE_root} --------------------------------------------')
 
-        # sun and view angles raster resolution
+        img_data_dirs = list(SAFE_root.rglob("IMG_DATA"))
+
+        ten_meter_bands = {"B02", "B03", "B04", "B08"}
+
+        # Get reference band (10m resolution)
+        reference_band_set = False
+        for img_data_dir in img_data_dirs:
+            if img_data_dir.is_dir():
+                for subdir in sorted(img_data_dir.iterdir()):
+                    if subdir.is_file():
+                        band_code = subdir.stem[-3:]
+                        if band_code in ten_meter_bands:
+                            with rasterio.open(subdir) as ref:
+                                self.reference_band = ref
+                                ny, nx = ref.height, ref.width
+                                reference_band_set = True
+                            break
+                    elif subdir.is_dir() and '10m' in subdir.name:
+                        for file_path in sorted(subdir.iterdir()):
+                            if file_path.is_file() and not any(x in str(file_path) for x in ['TCI', 'True color image']):
+                                with rasterio.open(file_path) as ref:
+                                    self.reference_band = ref
+                                    ny, nx = ref.height, ref.width
+                                    reference_band_set = True
+                                break
+                if reference_band_set:
+                    break
+
+        if not reference_band_set:
+            raise RuntimeError("No 10m reference band found")
+
         nxa, nya = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape
+        out_netcdf = (nc_out / self.product_id).with_suffix('.nc')
 
-        # output filename
-        out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
-
-        with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
+        with netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4') as ncout:
+            # Dimensions
             ncout.createDimension('time', 0)
             ncout.createDimension('x', nx)
             ncout.createDimension('y', ny)
@@ -148,190 +206,183 @@ class Sentinel2_reader_and_NetCDF_converter:
 
             utils.create_time(ncout, self.globalAttribs["PRODUCT_START_TIME"])
 
-            # Add projection coordinates
-            ##########################################################
-            # Status
             logger.info('Adding projection coordinates')
             utils.memory_use(self.t0)
 
-            xnp, ynp = self.genLatLon(nx, ny, latlon=False)  # Assume gcps are on a regular grid
+            xnp, ynp = self.genLatLon(nx, ny, latlon=False)
 
-            ncx = ncout.createVariable('x', 'i4', 'x', zlib=True, complevel=compression_level)
-            ncx.units = 'm'
-            ncx.standard_name = 'projection_x_coordinate'
-            ncx[:] = xnp
+            x_var = ncout.createVariable('x', 'i4', 'x', zlib=True, complevel=compression_level)
+            x_var.units = 'm'
+            x_var.standard_name = 'projection_x_coordinate'
+            x_var[:] = xnp
 
-            ncy = ncout.createVariable('y', 'i4', 'y', zlib=True, complevel=compression_level)
-            ncy.units = 'm'
-            ncy.standard_name = 'projection_y_coordinate'
-            ncy[:] = ynp
+            y_var = ncout.createVariable('y', 'i4', 'y', zlib=True, complevel=compression_level)
+            y_var.units = 'm'
+            y_var.standard_name = 'projection_y_coordinate'
+            y_var[:] = ynp
 
-            # Add projection raster band id variable
-            ##########################################################
+            # Raster band ID
             nc_rasterband_id = ncout.createVariable('band_id', 'i4', 'raster_band_id', zlib=True, complevel=compression_level)
+            band_keys = list(cst.s2_bands_order.keys())
+            nc_rasterband_id[:] = np.array(band_keys)
             nc_rasterband_id.long_name = 'raster band id'
-            nc_rasterband_id[:] = np.array(list(cst.s2_bands_order.keys()))
-            nc_rasterband_id.flag_values = np.array(list(
-                            cst.s2_bands_order.keys()),
-                                                      dtype=np.int8)
-            nc_rasterband_id.flag_meanings = ' '.join(
-                            [value for value in list(cst.s2_bands_order.values())])
+            nc_rasterband_id.flag_values = np.array(band_keys, dtype=np.int8)
+            nc_rasterband_id.flag_meanings = ' '.join(cst.s2_bands_order.values())
 
+            # Set CRS from first valid file
+            first_image_path = None
+            for img_data_dir in img_data_dirs:
+                for item in img_data_dir.rglob('*'):
+                    if item.is_file() and not any(x in str(item) for x in ['TCI', 'True color image']):
+                        first_image_path = item
+                        break
+                if first_image_path:
+                    break
 
-            # Add raw measurement layers
-            # Currently adding TCI
-            # NODATA = 0 (ie. fillvalue) from
-            # https://sentinel.esa.int/documents/247904/685211/Sentinel-2-Products-Specification
-            # -Document
-            ##########################################################
-            # Status
+            if first_image_path is None:
+                raise RuntimeError("No valid image files found.")
+            
+            with rasterio.open(first_image_path) as src:
+                try:
+                    crs = src.crs if src.crs and src.crs.is_valid else CRS.from_epsg(32631)  # UTM zone 31N
+                    nc_crs = ncout.createVariable('UTM_projection', np.int32)
+                    nc_crs.crs_wkt = crs.to_wkt()
+                    nc_crs.grid_mapping_name = crs.to_dict().get('proj', 'unknown')
+                    epsg = crs.to_epsg()
+                    if epsg:
+                        nc_crs.epsg_code = epsg
+                except Exception as e:
+                    raise RuntimeError(f"Failed to extract CRS: {e}")
+
+            # Process and write all bands (flat or subdirectory layout)
             logger.info('Adding frequency bands layers')
             utils.memory_use(self.t0)
 
             if self.dterrengdata:
                 # For DTERR data, gdal fails to properly do the src.GetSubDatasets()
                 # so manually read the list of images created beforehand
-                images = [[str(i), i.stem] for i in self.image_list_dterreng]
+                image_list = [[str(i), i.stem] for i in self.image_list_dterreng]
             else:
-                images = self.src.GetSubDatasets()
-            for k, v in images:
-                subdataset = gdal.Open(k)
-                subdataset_geotransform = subdataset.GetGeoTransform()
-                # True color image (8 bit true color image)
-                if ("True color image" in v) or ('TCI' in v):
-                    continue
-                # Reflectance data for each band
-                else:
-                    for i in range(1, subdataset.RasterCount + 1):
-                        current_band = subdataset.GetRasterBand(i)
-                        if self.dterrengdata:
-                            band_metadata = None
-                            varName = cst.s2_bands_aliases[v[-3::]]
+                #Checking whether image files are structured by resolution in subdirectories 
+                image_list = []
+                for img_data_dir in img_data_dirs:
+                    for subitem in sorted(img_data_dir.iterdir()): # sorting to assert highest resolution is added to nc-file
+                        if subitem.is_file():
+                            image_list.append(subitem)
+                        elif subitem.is_dir():
+                            for file in subitem.iterdir():
+                                if file.is_file():
+                                    image_list.append(file)
                         else:
-                            band_metadata = current_band.GetMetadata()
-                            varName = band_metadata['BANDNAME']
-                        if varName.startswith('B'):
-                            varout = ncout.createVariable(varName, np.uint16, ('time', 'y', 'x'), fill_value=0,
-                                                          zlib=True, complevel=compression_level)
-                            varout.units = "1"
-                            varout.grid_mapping = "UTM_projection"
-                            if self.processing_level == 'Level-2A':
-                                varout.standard_name = 'surface_bidirectional_reflectance'
+                            continue
+
+            # Defining the valid band names
+            valid_band_names = set(cst.s2_bands_aliases.keys())
+
+            for image_path in image_list:
+                if not image_path.is_file() or ("True color image" in str(image_path)) or ('TCI' in str(image_path)):
+                #print(image_path)
+                    continue
+
+                with rasterio.open(image_path) as src:
+                    #print(f'FOUND IMAGE {src} ----------------------------------------------------------------------------------')
+                    is_multiband = src.count > 1
+                    band_tags = src.tags()
+                    if self.dterrengdata:
+                        band_name = cst.s2_bands_aliases[image_path[-3::]]
+                    for i in range(1, src.count + 1):
+                        if self.dterrengdata:
+                            band_name = cst.s2_bands_aliases[image_path[-3::]]
+                        if subitem.is_file():
+                            band_name = image_path.stem[-3:]
+                            if band_name in valid_band_names:
+                                if band_name.startswith('B0'):
+                                    band_name = cst.s2_bands_aliases[f'{band_name}']
                             else:
-                                varout.standard_name = 'toa_bidirectional_reflectance'
-                            varout.long_name = 'Reflectance in band %s' % varName
-                            if band_metadata:
-                                varout.bandwidth = band_metadata['BANDWIDTH']
-                                varout.bandwidth_unit = band_metadata['BANDWIDTH_UNIT']
-                                varout.wavelength = band_metadata['WAVELENGTH']
-                                varout.wavelength_unit = band_metadata['WAVELENGTH_UNIT']
-                                varout.solar_irradiance = band_metadata['SOLAR_IRRADIANCE']
-                                varout.solar_irradiance_unit = band_metadata['SOLAR_IRRADIANCE_UNIT']
-                            varout._Unsigned = "true"
-                            # from DN to reflectance
-                            logger.debug((varName, subdataset_geotransform))
-                            if subdataset_geotransform[1] != 10:
-                                current_size = current_band.XSize
-                                band_measurement = scipy.ndimage.zoom(
-                                    input=current_band.GetVirtualMemArray(), zoom=nx / current_size,
-                                    order=0)
+                                continue
+                        if subitem.is_dir():
+                            band_name = image_path.stem[-7:-4]
+                            if band_name in valid_band_names:
+                                #print(band_name)
+                                if band_name.startswith('B'):
+                                    band_name = cst.s2_bands_aliases[f'{band_name}']
                             else:
-                                band_measurement = current_band.GetVirtualMemArray()
-                            varout[0, :, :] = band_measurement
+                                continue
 
-            # set grid mapping
+                        if not band_name:
+                            continue
+
+                        # === Write raster band ===
+                        data = src.read(i)
+                        if data.shape != (ny, nx):
+                            scale_y = ny / data.shape[0]
+                            scale_x = nx / data.shape[1]
+                            data = scipy.ndimage.zoom(data, (scale_y, scale_x), order=0)
+                            logger.debug(f"Resampled {band_name} from {data.shape} to {(ny, nx)}")
+                                                    # Check final shape before writing
+                            assert data.shape == (ny, nx), f"{band_name}: expected {(ny, nx)}, got {src.shape}"
+                        
+                        if band_name in ncout.variables:
+                            logger.warning(f"Higher resolution of '{band_name}' already exists in NetCDF. Skipping.")
+                            continue
+                        varout = ncout.createVariable(
+                            band_name, np.uint16, ('time', 'y', 'x'),
+                            zlib=True, complevel=compression_level, fill_value=0
+                        )
+                        varout.units = "1"
+                        varout.grid_mapping = "UTM_projection"
+                        varout.long_name = f"Reflectance in band {band_name}"
+                        varout._Unsigned = "true"
+                        varout.standard_name = (
+                            'surface_bidirectional_reflectance'
+                            if self.processing_level == 'Level-2A'
+                            else 'toa_bidirectional_reflectance'
+                        )
+
+                        # Adding if not present
+                        for key in ['BANDWIDTH', 'BANDWIDTH_UNIT', 'WAVELENGTH', 'WAVELENGTH_UNIT',
+                                    'SOLAR_IRRADIANCE', 'SOLAR_IRRADIANCE_UNIT']:
+                            val = band_tags.get(key)
+                            if val and val.lower() != 'none':
+                                setattr(varout, key.lower(), val)
+                        
+                        varout[0, :, :] = data
+
+            # Set grid mapping
             ##########################################################
-            source_crs = osr.SpatialReference()
-            source_crs.ImportFromWkt(self.reference_band.GetProjection())
-            nc_crs = ncout.createVariable('UTM_projection', np.int32)
-            nc_crs.latitude_of_projection_origin = source_crs.GetProjParm('latitude_of_origin')
-            nc_crs.proj4_string = source_crs.ExportToProj4()
-            nc_crs.crs_wkt = source_crs.ExportToWkt()
-            nc_crs.semi_major_axis = source_crs.GetSemiMajor()
-            nc_crs.scale_factor_at_central_meridian = source_crs.GetProjParm('scale_factor')
-            nc_crs.longitude_of_central_meridian = source_crs.GetProjParm('central_meridian')
-            nc_crs.grid_mapping_name = source_crs.GetAttrValue('PROJECTION').lower()
-            nc_crs.semi_minor_axis = source_crs.GetSemiMinor()
-            nc_crs.false_easting = source_crs.GetProjParm('false_easting')
-            nc_crs.false_northing = source_crs.GetProjParm('false_northing')
-            nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
-            nc_crs.crs_wkt = self.reference_band.GetProjection()
+            cf_proj_map = {
+                "utm": "transverse_mercator",
+                "longlat": "latitude_longitude",
+                # Add more as needed
+            }
 
-            # Add vector layers
-            ##########################################################
-            # Status
-            logger.info('Adding masks layers')
-            utils.memory_use(self.t0)
-            gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
+            # # Dummy dimension to allow the variable
+            ncout.createDimension("crs", 1)
+            #nc_crs = ncout.createVariable('UTM_projection', np.int32)
+            rio_crs = src.crs  
+            pyproj_crs = PyCRS.from_wkt(rio_crs.to_wkt())  # convert to pyproj CRS
+            # Projection strings
+            proj_name = pyproj_crs.to_dict().get("proj", "") # hardcoding name of grid_projection to comply with CF
+            nc_crs.grid_mapping_name = cf_proj_map.get(proj_name, proj_name)
+            nc_crs.crs_wkt = pyproj_crs.to_wkt()
+            nc_crs.proj4_string = pyproj_crs.to_proj4()
 
-            # Add specific Level-1C or Level-2A layers
-            ##########################################################
-            # Status
-            specific_layers_kv = {}
-            utils.memory_use(self.t0)
-            gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
+            # Semi-axes 
+            ellipsoid = pyproj_crs.ellipsoid
+            nc_crs.semi_major_axis = ellipsoid.semi_major_metre
+            nc_crs.semi_minor_axis = ellipsoid.semi_minor_metre
 
-            if self.processing_level == 'Level-1C':
-                logger.info('Adding Level-1C specific layers')
-                for layer in cst.s2_l1c_layers:
-                    for k, v in self.imageFiles.items():
-                        if layer in k:
-                            specific_layers_kv[k] = cst.s2_l1c_layers[k]
-                        elif layer in str(v):
-                            logger.debug((layer, str(v), k))
-                            specific_layers_kv[k] = cst.s2_l1c_layers[layer]
-
-
-            elif self.processing_level == 'Level-2A':
-                logger.info('Adding Level-2A specific layers')
-                for layer in cst.s2_l2a_layers:
-                    for k, v in self.imageFiles.items():
-                        if layer in k:
-                            specific_layers_kv[k] = cst.s2_l2a_layers[k]
-                        elif layer in str(v):
-                            logger.debug((layer, str(v), k))
-                            specific_layers_kv[k] = cst.s2_l2a_layers[layer]
-
-            for k, v in specific_layers_kv.items():
-                logger.debug((k, v))
-                varName, longName = v.split(',')
-                SourceDS = gdal.Open(str(self.imageFiles[k]), gdal.GA_ReadOnly)
-                nb_rasterBands =  SourceDS.RasterCount
-
-                if SourceDS.RasterCount > 1:
-                    logger.info("Raster data contains more than one layer")
-
-                for i in range(1,nb_rasterBands+1):
-                    if nb_rasterBands>1:
-                        varName =  v.split(',')[0].split()[i-1]
-                        longName =  v.split(',')[1].split('-')[i-1]
-                    NDV = SourceDS.GetRasterBand(i).GetNoDataValue()
-                    xsize = SourceDS.RasterXSize
-                    ysize = SourceDS.RasterYSize
-                    GeoT = SourceDS.GetGeoTransform()
-                    logger.info("{}".format(GeoT))
-                    DataType = gdal_nc_data_types[
-                        gdal.GetDataTypeName(SourceDS.GetRasterBand(i).DataType)]
-                    varout = ncout.createVariable(varName, DataType, ('time', 'y', 'x'), fill_value=0,
-                                                  zlib=True, complevel=compression_level, chunksizes=chunk_size)
-                    varout.grid_mapping = "UTM_projection"
-                    varout.long_name = longName
-                    if varName == "SCL":
-                        varout.flag_values = np.array(list(
-                            cst.s2_scene_classification_flags.values()),
-                                                      dtype=np.int8)
-                        varout.flag_meanings = ' '.join(
-                            [key for key in list(cst.s2_scene_classification_flags.keys())])
-
-                    if GeoT[1] != 10:
-                        raster_data = scipy.ndimage.zoom(input=SourceDS.GetRasterBand(i).GetVirtualMemArray(),
-                                                         zoom=nx / xsize, order=0)
-                    else:
-                        raster_data = SourceDS.GetRasterBand(i).GetVirtualMemArray()
-                    varout[0, :] = raster_data
-
+            # Projection parameters (with safe fallback)
+            params = pyproj_crs.to_dict()
+            nc_crs.false_easting = float(params.get("x_0", 0.0))
+            nc_crs.false_northing = float(params.get("y_0", 0.0))
+            nc_crs.latitude_of_projection_origin = float(params.get("lat_0", 0.0))
+            nc_crs.longitude_of_central_meridian = float(params.get("lon_0", 0.0))
+            nc_crs.scale_factor_at_central_meridian = float(params.get("k", 1.0))
+            
             # Add sun and view angles
             ##########################################################
+
             # Status
             logger.info('Adding sun and view angles in native resolution')
             utils.memory_use(self.t0)
@@ -368,6 +419,78 @@ class Sentinel2_reader_and_NetCDF_converter:
 
                 counter += 1
 
+
+            # Add specific Level-1C or Level-2A layers
+            ##########################################################
+
+            # Mapping GDAL types to NumPy types (rasterio returns np arrays, so you only need dtype)
+            gdal_nc_data_types = {'Byte': 'u1', 'UInt16': 'u2'}
+
+            # Choose layers to include
+            specific_layers = {}
+            if self.processing_level == 'Level-1C':
+                logger.info('Adding Level-1C specific layers')
+                for layer_key in cst.s2_l1c_layers:
+                    for k, v in self.imageFiles.items():
+                        if layer_key in k or layer_key in str(v):
+                            specific_layers[k] = cst.s2_l1c_layers[layer_key]
+            elif self.processing_level == 'Level-2A':
+                logger.info('Adding Level-2A specific layers')
+                for layer_key in cst.s2_l2a_layers:
+                    for k, v in self.imageFiles.items():
+                        if layer_key in k or layer_key in str(v):
+                            specific_layers[k] = cst.s2_l2a_layers[layer_key]
+
+            # Process each auxiliary layer
+            for k, v in specific_layers.items():
+                image_path = Path(self.imageFiles[k])
+                var_name, long_name = v.split(',')
+
+                with rasterio.open(image_path) as src:
+                    nb_bands = src.count
+                    data_type_name = src.dtypes[0]  # e.g. 'uint16', 'uint8'
+                    data_type = data_type_name if data_type_name in ['u1', 'u2'] else 'u2'  # fallback
+
+                    if nb_bands > 1:
+                        logger.info(f"Raster data contains more than one layer")
+                    
+                    for i in range(1, nb_bands + 1):
+                        if nb_bands > 1:
+                            var_name = v.split(',')[0].split()[i - 1]
+                            long_name = v.split(',')[1].split('-')[i - 1]
+
+                        data = src.read(i)
+                        NDV = src.nodata or 0
+
+                        # Resample if not 10m resolution
+                        if data.shape != (ny, nx):
+                            scale_y = ny / data.shape[0]
+                            scale_x = nx / data.shape[1]
+                            data = scipy.ndimage.zoom(data, (scale_y, scale_x), order=0)
+                            logger.debug(f"Resampled {var_name} to shape {(ny, nx)}")
+                        
+                        if var_name in ncout.variables:
+                            logger.warning(f"Skipping duplicate variable '{var_name}'")
+                            continue
+
+                        varout = ncout.createVariable(
+                            var_name, data.dtype.str[1:], ('time', 'y', 'x'),
+                            zlib=True, complevel=compression_level, fill_value=NDV,
+                            chunksizes=chunk_size
+                        )
+                        varout.grid_mapping = "UTM_projection"
+                        varout.long_name = long_name
+
+                        # Add classification flags (e.g. for SCL)
+                        if var_name == "SCL":
+                            varout.flag_values = np.array(
+                                list(cst.s2_scene_classification_flags.values()), dtype=np.int8)
+                            varout.flag_meanings = ' '.join(cst.s2_scene_classification_flags.keys())
+
+                        varout[0, :, :] = data
+
+
+            
             # Add orbit specific data
             ##########################################################
             # Status
@@ -381,35 +504,26 @@ class Sentinel2_reader_and_NetCDF_converter:
             else:
                 self.globalAttribs['orbitNumber'] = root.find('.//SENSING_ORBIT_NUMBER').text
 
+
             ncout.createDimension('orbit_dim', 3)
             nc_orb = ncout.createVariable('orbit_data', np.int32, ('time', 'orbit_dim'))
-            rel_orb_nb = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']
-            orb_nb = self.globalAttribs['orbitNumber']
-            orb_dir = self.globalAttribs['DATATAKE_1_SENSING_ORBIT_DIRECTION']
-            platform = self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']
-
-            nc_orb.relativeOrbitNumber = rel_orb_nb
-            nc_orb.orbitNumber = orb_nb
-            nc_orb.orbitDirection = orb_dir
-            nc_orb.platform = platform
-            nc_orb.description = "Values structured as [relative orbit number, orbit number, " \
-                                 "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
-            nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
+            nc_orb[0, :] = [
+                int(self.globalAttribs['DATATAKE_1_SENSING_ORBIT_NUMBER']),
+                int(self.globalAttribs['orbitNumber']),
+                cst.platform_id[self.globalAttribs['DATATAKE_1_SPACECRAFT_NAME']]
+            ]
 
             # Add global attributes
-
             logger.info('Adding global attributes')
             utils.memory_use(self.t0)
-
             utils.get_global_attributes(self)
             ncout.setncatts(self.globalAttribs)
             ncout.sync()
 
-            ### Status
-            logger.info('Finished.')
-            utils.memory_use(self.t0)
+        logger.info("Finished conversion.")
 
         return out_netcdf.is_file()
+    
 
     def readSunAndViewAngles(self, xmlfile):
         """ Method for reading sun and view angles from Sentinel-2
@@ -505,31 +619,39 @@ class Sentinel2_reader_and_NetCDF_converter:
         return angles_resampled
 
     def genLatLon(self, nx, ny, latlon=True):
-        """ Method providing latitude and longitude arrays or projection
-            coordinates depending on latlon argument."""
+        """Generate latitude/longitude or projection coordinates using rasterio + pyproj."""
+        
+        # Get affine transform from rasterio
+        transform = self.reference_band.transform  # Affine transform
+        ulx, xres, xskew, uly, yskew, yres = (
+            transform.c,
+            transform.a,
+            transform.b,
+            transform.f,
+            transform.d,
+            transform.e
+        )
 
-        ulx, xres, xskew, uly, yskew, yres = self.reference_band.GetGeoTransform()  # ulx - upper
-        # left x, uly - upper left y
-
-        # x and y in UTM coordinates
+        # UTM coordinates (projected)
         xnp = np.arange(nx) * xres + ulx
         ynp = np.arange(ny) * yres + uly
 
         if not latlon:
             return xnp, ynp
 
-        # Generate coordinate mesh (UTM) Correct lat lon for center pixel
-        indices = np.indices((nx, ny), dtype=np.int32)
-        xp = np.int32(ulx + (xres * 0.5)) + indices[1] * np.int32(xres) + indices[1] * np.int32(
-            xskew)
-        yp = np.int32(uly - (yres * 0.5)) + indices[0] * np.int32(yres) + indices[0] * np.int32(
-            yskew)
+        # Create coordinate grid in UTM
+        xx, yy = np.meshgrid(xnp + xres / 2, ynp + yres / 2)  # center of pixels
 
-        current_projection = pyproj.CRS.from_string(self.reference_band.GetProjection())
-        target_projection = pyproj.CRS.from_proj4('+proj=longlat +ellps=WGS84')
-        longitude, latitude = pyproj.Transformer.from_crs(current_projection, target_projection).transform(xp, yp)
+        # Reproject UTM to WGS84 lat/lon
+        transformer = pyproj.Transformer.from_crs(
+            self.reference_band.crs,
+            "EPSG:4326",  # WGS84
+            always_xy=True
+        )
+        lon, lat = transformer.transform(xx, yy)
 
-        return latitude, longitude
+        return lat, lon
+
 
     def write_vector(self, vectorfile, ncfile):
         """
@@ -636,36 +758,5 @@ class Sentinel2_reader_and_NetCDF_converter:
         varout[0, :] = geom_values
 
         return
-
-
-if __name__ == '__main__':
-
-    # Log to console
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    log_info = logging.StreamHandler(sys.stdout)
-    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(log_info)
-
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-
-    products = [
-            'S2A_MSIL2A_20231031T130301_N0509_R038_T27WXM_20231031T154853',
-            'S2A_MSIL1C_20231031T130301_N0509_R038_T27WWM_20231031T145931',
-            'S2B_MSIL1C_20231031T135229_N0509_R110_T25WFT_20231031T155138',
-            'S2B_MSIL2A_20231031T135229_N0509_R110_T25WDP_20231031T160709'
-    ]
-
-    for product in products:
-
-        outdir = workdir / product
-        outdir.parent.mkdir(parents=False, exist_ok=True)
-        conversion_object = Sentinel2_reader_and_NetCDF_converter(
-            product=product,
-            indir=outdir,
-            outdir=outdir)
-        if conversion_object.read_ok:
-            conversion_object.write_to_NetCDF(outdir, 7)
-
-
+    
 

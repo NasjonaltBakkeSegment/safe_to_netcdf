@@ -2,17 +2,49 @@
 Tools -
 """
 
-import pathlib
+# from pathlib import Path
+# import lxml.etree as ET
+# import datetime as dt
+# import resource
+# import subprocess as sp
+# import zipfile
+# import logging
+# import yaml
+# from pkg_resources import resource_string
+# import shapely.wkt, shapely.ops
+# import rasterio
+# import argparse
+# import io
+# from io import BytesIO
+# from netCDF4 import Dataset
+# from rasterio.io import MemoryFile
+# import tempfile
+# import rioxarray as rio
+# import xarray as xr
+# import re
+# from s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
+# from s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
+# from s3_olci_l1_reader_and_CF_converter import Sentinel3_olci_reader_and_CF_converter
+# import os
+# import shutil
+
+from pathlib import Path
 import lxml.etree as ET
 import datetime as dt
 import resource
-from osgeo import gdal
 import subprocess as sp
 import zipfile
 import logging
 import yaml
 from pkg_resources import resource_string
 import shapely.wkt, shapely.ops
+import rasterio
+from rasterio.io import MemoryFile
+import tempfile
+import xarray as xr
+import re
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +57,7 @@ def xml_read(xml_file):
     Returns:
         lxml.etree._Element or None if file missing
     """
-    if not pathlib.Path(xml_file).is_file():
+    if not Path(xml_file).is_file():
         logger.error(f'Error: Can\'t find xmlfile {xml_file}')
         return None
     tree = ET.parse(str(xml_file))
@@ -102,7 +134,7 @@ def initializer(self):
             fWithPath = self.SAFE_dir.parent / f
             if fWithPath.suffix == '.xml' or fWithPath.suffix == '.gml':
                 self.xmlFiles[fWithPath.stem] = fWithPath
-        # Read relative image path (since gdal can't open all these products..)
+        # Read relative image path 
         self.image_list_dterreng = [self.SAFE_dir.parent / s for s in allFiles
                                                     if ".jp2" in s and "IMG_DATA" in s]
     else:
@@ -129,24 +161,29 @@ def initializer(self):
                 if ftype == 'text/xml' and href:
                     self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
 
-    # Set gdal object
-    if sat == 'S2' and not self.dterrengdata:
-        gdalFile = str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)])
-    else:
-        gdalFile = str(self.mainXML)
-    self.src = gdal.Open(gdalFile)
-    if self.src is None:
-        raise
-    logger.debug((self.src))
 
-    # Set global metadata attributes from gdal
-    self.globalAttribs = self.src.GetMetadata()
+    # Set rasterio source path
+    if sat == 'S2' and not self.dterrengdata:
+        rasterio_file = str(self.xmlFiles[f'S2_{self.processing_level}_Product_Metadata'])
+    else:
+        rasterio_file = str(self.mainXML)
+    # Debugging
+    logger.debug(f"XML file to be opened: {rasterio_file}")
+    try:
+        self.src = rasterio.open(rasterio_file)
+    except Exception as e:
+        raise RuntimeError(f"Failed to open file with rasterio: {e}")
+
+    logger.debug(self.src)
+
+    # Set global metadata attributes from rasterio
+    self.globalAttribs = self.src.tags()
 
     if sat == 'S2':
         # Offset parameters for N0400 baseline, for both L1C and L2A products
         if self.baseline == 'N0400':
             logger.info('Adding offset parameters for N0400')
-            root_offset = xml_read(gdalFile)
+            root_offset = xml_read(rasterio_file)
             if self.processing_level == 'Level-2A':
                 self.globalAttribs['BOA_ADD_OFFSET'] = root_offset.find('.//BOA_ADD_OFFSET').text
             elif self.processing_level == 'Level-1C':
@@ -159,26 +196,26 @@ def initializer(self):
                     tmp1 = str(f).split('.SAFE')
                     try:
                         tmp2 = str(f).split('GRANULE')
-                        self.xmlFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
+                        self.xmlFiles[i] = Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
                     except IndexError:
                         tmp2 = str(f).split('DATASTRIP')
-                        self.xmlFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/DATASTRIP' + tmp2[1])
+                        self.xmlFiles[i] = Path(tmp1[0] + '.SAFE/DATASTRIP' + tmp2[1])
             for i, f in self.imageFiles.items():
                 if 'wp_in_progress' in str(f):
                     tmp1 = str(f).split('.SAFE')
                     if 'GRANULE' in str(f):
                         tmp2 = str(f).split('GRANULE')
-                        self.imageFiles[i] = pathlib.Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
+                        self.imageFiles[i] = Path(tmp1[0] + '.SAFE/GRANULE' + tmp2[1])
         # Baseline N0207 for S2L2A products has typos in paths
         elif self.baseline == 'N0207':
             logger.info('Fixing paths for baseline N0207')
             for i,f in self.xmlFiles.items():
-                self.xmlFiles[i] = pathlib.Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
+                self.xmlFiles[i] = Path(str.replace(str(f), '/ANULE/', '/GRANULE/').replace('/TASTRIP/', '/DATASTRIP/'))
 
     elif sat == 'S1':
         # Set raster size parameters
-        self.xSize = self.src.RasterXSize
-        self.ySize = self.src.RasterYSize
+        self.xSize = self.src.width
+        self.ySize = self.src.height
         # Set polarisation parameters
         polarisations = root.findall('.//s1sarl1:transmitterReceiverPolarisation',
                                      namespaces=root.nsmap)
@@ -327,4 +364,79 @@ def get_key(my_dict,val):
              return key
 
     return "There is no such Key"
+
+def write_to_geotiff(conversion_object, indir, product, outdir):
+
+        # Creating a memory stream for creating temporary NetCDF-file to convert
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            nc_out = tmpdir
+            nc_out.parent.mkdir(parents=True, exist_ok=True)
+
+            
+            # Write .SAFE data to temporary NetCDF
+            if conversion_object.read_ok:
+                conversion_object.write_to_NetCDF(nc_out, outdir, product, 7)
+            
+                nc_path = nc_out / (product + '.nc')
+
+                ds = xr.open_dataset(nc_path)
+
+                logger.info('Writing GeoTIFFs from nc-file.')
+
+                # For each band in .SAFE data we create a GeoTIFF-file
+                for variable, variable_item in ds.data_vars.items():
+                    if variable_item.dims == ('time', 'y', 'x') or variable_item.dims == ('rows', 'columns') :
+                        band = ds[variable]
+
+                        #Define lat/long 
+                        try:
+                            band = band.rio.set_spatial_dims('x', 'y')
+                        except:
+                            band = band.rio.set_spatial_dims('rows', 'columns')
+
+                        #If  CRS is not discovered, add manually
+                        if not band.rio.crs:
+                            band = band.rio.write_crs("EPSG:4326") # add epsg
+
+                        with MemoryFile() as memfile:
+                            with memfile.open(
+                                driver='GTiff',
+                                compress='LZW', # Change compression upon need
+                                height=band.shape[-2],
+                                width=band.shape[-1],
+                                count=1,
+                                dtype=band.dtype,
+                                transform=band.rio.transform()
+                                ) as dst:
+                                try:
+                                    dst.write(band.values)
+                                except:
+                                    dst.write(band.values.reshape((1, *band.shape))) # rewrap dimensions of band if not 3D
+
+
+
+                            
+                            outfile = Path(outdir / (variable + ".tif"))
+
+                            outfile.parent.mkdir(parents=True, exist_ok=True)
+
+                            # Save GeoTIFF to disk
+                            with open(outfile, "wb") as f:
+                                f.write(memfile.read()) 
+            else:
+                AssertionError('Could not instantiate class')  
+
+
+def extract_band_code(filename):
+    """
+    Extracts band code like 'B08', 'B8A', 'B11', etc. from a Sentinel-2 filename.
+    Returns None if not found.
+    """
+    match = re.search(r'_B(0?[1-9A]{2})', filename)  # matches _B08, _B8A, _B11, etc.
+    if match:
+        return 'B' + match.group(1)
+    return None
+
 

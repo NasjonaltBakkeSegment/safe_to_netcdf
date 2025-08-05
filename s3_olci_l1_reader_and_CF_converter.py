@@ -7,16 +7,26 @@
 # Created:       10.05.2019
 # Copyright:     (c) Norwegian Meteorological Institute, 2019
 # -------------------------------------------------------------------------------
+# import datetime as dt
+# import pytz
+# import xarray as xr
+# import logging
+# import sys
+# import pathlib
+# import numpy as np
+# import isodate
+# import utils as utils
+# import constants as cst
+
 import datetime as dt
 import pytz
 import xarray as xr
 import logging
-import sys
-import pathlib
 import numpy as np
 import isodate
-from . import utils
-from . import constants as cst
+import utils as utils
+import constants as cst
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +42,7 @@ logger = logging.getLogger(__name__)
 """
 
 
-class S3_olci_reader_and_CF_converter:
+class Sentinel3_olci_reader_and_CF_converter:
     """ S3 OLCI object for merging SAFE files and creating single NetCDF/CF """
 
     def __init__(self, product, indir, outdir):
@@ -51,7 +61,9 @@ class S3_olci_reader_and_CF_converter:
         """
         self.product_id = product
         file_path = indir / (product + '.zip')
-        print(file_path)
+        logger.info((f'Indir = {indir}'))
+        logger.info(f'Product = {product}')
+        logger.info(f'Path: {file_path}')
         if file_path.exists():
             self.input_zip = file_path
         else:
@@ -62,9 +74,9 @@ class S3_olci_reader_and_CF_converter:
         self.processing_level = 'Level-' + self.product_id.split('_')[2]
         self.t0 = dt.datetime.now(tz=pytz.utc)
         self.read_ok = True
-        self.main()
+        self.run()
 
-    def main(self):
+    def run(self):
         """ Main method for traversing and reading key values from SAFE
             directory.
         """
@@ -74,11 +86,11 @@ class S3_olci_reader_and_CF_converter:
 
         return True
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(30, 34)):
+    def write_to_NetCDF(self, nc_out, outdir, compression_level, chunk_size=(30, 34)):
 
         """ Method writing output NetCDF product.
         Args:
-            nc_outpath (str): output path where NetCDF file should be stored
+            outdir (str): output path where NetCDF file should be stored
             compression_level (int): compression level on output NetCDF file (1-9)
             chunk_size (tuple): chunk size in output NetCDF. Format (rows, columns)
         """
@@ -95,7 +107,7 @@ class S3_olci_reader_and_CF_converter:
             nc_files.append(self.SAFE_dir / o.find('.//fileLocation').attrib['href'].split('/')[1])
 
         # output filename
-        ncout = (nc_outpath / self.product_id).with_suffix('.nc')
+        ncout = (nc_out / self.product_id).with_suffix('.nc')
 
         t1 = dt.datetime.now(tz=pytz.utc)
         # Concatenate radiance for all bands and lat/lon
@@ -255,42 +267,3 @@ class S3_olci_reader_and_CF_converter:
         else:
             return None, None
 
-
-if __name__ == '__main__':
-
-    # Log to console
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    log_info = logging.StreamHandler(sys.stdout)
-    log_info.setFormatter(
-        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(log_info)
-
-    # workdir = pathlib.Path(
-    #     '/home/trygveh/data/satellite_data/Sentinel-3/OCLI/L1/S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002')
-    # products = [
-    #     'S3B_OL_1_EFR____20200518T162416_20200518T162716_20200519T201048_0179_039_083_1440_LN1_O_NT_002']
-
-    # workdir = pathlib.Path('/home/elodief/Data/NBS/NBS_test_data/test_s3_olci')
-    # products = [
-    #     'S3B_OL_1_EFR____20211213T082842_20211213T083015_20211214T123309_0092_060_178_1980_LN1_O_NT_002']
-
-    ##workdir = pathlib.Path('/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS_work/test_environment/test_s3')
-    ##products = [
-    ##    'S3A_OL_1_EFR____20211124T104042_20211124T104307_20211124T130348_0145_079_051_1980_LN1_O_NR_002',
-    ##]
-
-    workdir = pathlib.Path('/home/alessio/MET/data/S3_products') #pathlib.Path('/home/alessioc/data/S3_products')
-    products = ['S3A_OL_1_EFR____20240724T101655_20240724T101955_20240724T121332_0179_115_065_2160_PS1_O_NR_004.SEN3',
-                'S3A_OL_1_EFR____20240805T081842_20240805T082142_20240805T102309_0179_115_235_1800_PS1_O_NR_004.SEN3',
-                'S3A_OL_1_ERR____20240805T081018_20240805T085434_20240805T102258_2656_115_235______PS1_O_NR_004.SEN3',
-                'S3A_OL_2_LFR____20240805T082442_20240805T082742_20240805T103359_0179_115_235_2160_PS1_O_NR_002.SEN3']
-
-    for product in products:
-        outdir = workdir / product.split('.')[0]
-        outdir.parent.mkdir(parents=False, exist_ok=True)
-        s3_obj = S3_olci_reader_and_CF_converter(
-            product=product,
-            indir=workdir,
-            outdir=outdir)
-        s3_obj.write_to_NetCDF(outdir, compression_level=1)

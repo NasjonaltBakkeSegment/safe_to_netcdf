@@ -8,17 +8,25 @@
 # Modifications:
 # Copyright:     (c) Norwegian Meteorological Institute, 2018
 #
-# Need to use gdal 2.1.1-> to have support of the SAFE reader
+
 
 import sys
+import os
+import re
+from pathlib import Path
 from collections import defaultdict
-import netCDF4
-import numpy as np
-import pathlib
-from scipy import interpolate
 import datetime as dt
-from . import utils as utils
 import logging
+
+# Third-party libraries
+import numpy as np
+import netCDF4
+import rasterio
+from scipy import interpolate
+
+# Custom libraries
+import utils as utils
+
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +50,9 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.uuid = colhub_uuid
         self.product_id = product
         file_path = indir / (product + '.zip')
+        logger.info((f'Indir = {indir}'))
+        logger.info(f'Product = {product}')
+        logger.info(f'Path: {file_path}')
         if file_path.exists():
             self.input_zip = file_path
         else:
@@ -66,9 +77,9 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.productMetadata = defaultdict(dict)  # list of values from image annotation files
         self.productMetadataList = defaultdict(dict)  # list of lists from image annotation files
         self.read_ok = True
-        self.main()
+        self.run()
 
-    def main(self):
+    def run(self):
         """ Main method for traversing and reading key parameters from SAFE
             directory.
         """
@@ -278,12 +289,12 @@ class Sentinel1_reader_and_NetCDF_converter:
     def getGCPs(self):
         """ Get product GCPs utilizing gdal """
         if self.src:
-            self.gcps = self.src.GetGCPs()
+            self.gcps, _ = self.src.gcps
             return True
         else:
             return False
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 91, 99)):
+    def write_to_NetCDF(self, nc_out, outdir, product, compression_level, chunk_size=(1, 91, 99)):
         """ Method intitializing output NetCDF product.
 
         Keyword arguments:
@@ -291,12 +302,14 @@ class Sentinel1_reader_and_NetCDF_converter:
         compression_level -- compression level on output NetCDF file (1-9)
         """
 
+        SAFE_root = Path(outdir) / f"{product}.SAFE"
+
         logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
 
         # Status
         utils.memory_use(self.t0)
 
-        out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
+        out_netcdf = (nc_out / self.product_id).with_suffix('.nc')
         ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
         ncout.createDimension('time', 1)
         ncout.createDimension('x', self.xSize)
@@ -334,33 +347,48 @@ class Sentinel1_reader_and_NetCDF_converter:
         ##########################################################
         # Status
         utils.memory_use(self.t0)
+        MEASUREMENT_DIR = os.path.join(SAFE_root, "measurement")
 
-        for i in range(1, self.src.RasterCount + 1):
-            band = self.src.GetRasterBand(i)
-            band_metadata = band.GetMetadata()
-            try:
-                varName = 'Amplitude_%s' % band_metadata['POLARISATION']
-            except:
-                varName = 'Amplitude_%s' % band_metadata['POLARIZATION']
-            var = ncout.createVariable(varName, 'u2', ('time', 'y', 'x',),
-                                       fill_value=0, zlib=True, complevel=compression_level,
-                                       chunksizes=chunk_size)
-            try:
-                var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARIZATION']
-            except:
-                var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
-            var.units = "1"
-            var.coordinates = "lat lon"
-            var.grid_mapping = "crsWGS84"
-            var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
-            try:
-                var.polarisation = "%s" % band_metadata['POLARIZATION']
-            except:
-                var.polarisation = "%s" % band_metadata['POLARISATION']
-            logger.debug((band.GetVirtualMemArray().shape))
-            var[0, :, :] = band.GetVirtualMemArray()
+        #  Extract polarisation from filename 
+        def extract_polarisation_from_filename(filename):
+            match = re.search(r'(HH|HV|VV|VH)', filename.upper())
+            return match.group(1) if match else None
 
-            band = None
+
+        # LOOP THROUGH TIFFs IN measurement
+        for fname in os.listdir(MEASUREMENT_DIR):
+            if not fname.lower().endswith(('.tif', '.tiff')):
+                continue
+
+            pol = extract_polarisation_from_filename(fname)
+            if not pol:
+                logger.warning(f"Could not extract polarisation from filename: {fname}")
+                continue
+
+            tiff_path = os.path.join(MEASUREMENT_DIR, fname)
+
+            with rasterio.open(tiff_path) as src:
+                data = src.read(1)  # Read band 1
+
+                # Create NetCDF variable
+                if pol in ncout.variables:
+                    logger.warning(f"Variable {pol} already exists — skipping duplicate.")
+                    continue
+                
+                varName = 'Amplitude_%s' % pol
+                var = ncout.createVariable(varName, 'u2', ('time', 'y', 'x'),
+                                        fill_value=0, zlib=True, complevel=compression_level,
+                                        chunksizes=chunk_size)
+
+                var.long_name = f'Amplitude {pol}-polarisation'
+                var.units = "1"
+                var.coordinates = "lat lon"
+                var.grid_mapping = "crsWGS84"
+                var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
+
+                logger.debug(f"{pol}: data shape = {data.shape}")
+                var[0, :, :] = data
+
 
         # set grid mapping(?)
         ##########################################################
@@ -402,7 +430,9 @@ class Sentinel1_reader_and_NetCDF_converter:
         for polarisation in self.polarisation:
             noiseCorrectionMatrix = self.getNoiseCorrectionMatrix(self.noiseVectors[polarisation],
                                                                   polarisation)
-
+            if ('noiseCorrectionMatrix_' + polarisation) in ncout.variables:
+                logger.warning(f"Variable for polarisation {'noiseCorrectionMatrix_' + polarisation} already exists. Skipping.")
+                continue
             var = ncout.createVariable(str('noiseCorrectionMatrix_' + polarisation), 'f4',
                                        ('time', 'y', 'x',),
                                        zlib=True, complevel=compression_level,
@@ -758,12 +788,12 @@ class Sentinel1_reader_and_NetCDF_converter:
         idx = 0
 
         for gcp in gcps:
-            if gcp.GCPPixel == 0:
-                y.append(gcp.GCPLine)
-            if gcp.GCPLine == 0:
-                x.append(gcp.GCPPixel)
-            lon.append(gcp.GCPX)
-            lat.append(gcp.GCPY)
+            if gcp.col == 0:
+                y.append(gcp.row)
+            if gcp.row == 0:
+                x.append(gcp.col)
+            lon.append(gcp.x)
+            lat.append(gcp.y)
         x = np.array(x, np.int32)
         y = np.array(y, np.int32)
         lat = np.array(lat, np.float32)
@@ -771,14 +801,15 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         xi = list(range(0, xsize))
         yi = list(range(0, ysize))
-        tck = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
-        latitude = tck(yi, xi)
-        tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
-        longitude = tck(yi, xi)
+        tck_lat = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
+        latitude = tck_lat(yi, xi)
+        tck_lon = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
+        longitude = tck_lon(yi, xi)
 
         del lat
         del lon
-        del tck
+        del tck_lat
+        del tck_lon
 
         return latitude, longitude
 
@@ -1060,28 +1091,3 @@ class Sentinel1_reader_and_NetCDF_converter:
         logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
 
-
-if __name__ == '__main__':
-
-    # Log to console
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    log_info = logging.StreamHandler(sys.stdout)
-    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(log_info)
-
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-    products = ['S1A_IW_SLC__1SDV_20231030T163223_20231030T163250_050997_062607_ECF5']
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-
-    products = ['S1A_EW_GRDH_1SDH_20231016T071258_20231016T071502_050787_061EE6_78D6']
-
-    for product in products:
-
-        outdir = workdir / product
-        outdir.parent.mkdir(parents=False, exist_ok=True)
-        conversion_object = Sentinel1_reader_and_NetCDF_converter(
-            product=product,
-            indir=outdir,
-            outdir=outdir)
-        conversion_object.write_to_NetCDF(outdir, 7)
