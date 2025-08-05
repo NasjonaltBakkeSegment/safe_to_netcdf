@@ -7,16 +7,7 @@
 # Created:       10.05.2019
 # Copyright:     (c) Norwegian Meteorological Institute, 2019
 # -------------------------------------------------------------------------------
-# import datetime as dt
-# import pytz
-# import xarray as xr
-# import logging
-# import sys
-# import pathlib
-# import numpy as np
-# import isodate
-# import utils as utils
-# import constants as cst
+
 
 import datetime as dt
 import pytz
@@ -26,6 +17,10 @@ import numpy as np
 import isodate
 import utils as utils
 import constants as cst
+import sys
+import argparse
+import os
+from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +35,43 @@ logger = logging.getLogger(__name__)
     ISSUES:
     - (FIXED) int64: not supported in dap2. will come in dap4 https://www.unidata.ucar.edu/support/help/MailArchives/thredds/msg01762.html
 """
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+            description='Script to read and convert Sentinel 3 data to NetCDF or GeoTIFF. Inputs are: \n'+
+            'input: either a list with paths to the sentinel data or a path to a directory containing sentinel data\n'+
+            'output (not mandatory): either the path only of where to write the parent file or the path + parent filename or the parent filename only\n'+
+            'format: either NetCDF or GeoTIFF (if GeoTIFF, output is a directory containing files for each individual raster band)\n'+
+            'e.g. s3_olci_l1_reader_and_CF_converter.py -i /path/to/sentinel/data -f NetCDF -o /path/to/output.nc \n'+
+            'e.g. s3_olci_l1_reader_and_CF_converter.py -i /path/to/sentinel/data -f GeoTIFF -o /path/to/outputfiles \n'+
+            '...'
+            )
+    
+    parser.add_argument(
+        "--input", '-i',
+        required=True,
+        type=utils.parse_input,
+        help="Required: either a .txt file with one /path/to/SAFE.zip per line, or a single valid /path/to/SAFE.zip"
+    )
+
+    parser.add_argument(
+        '--format', '-f',
+        choices=['netcdf', 'geotiff'],
+        required=True,
+        help="Output format: 'netcdf' for NetCDF file or 'geotiff' for GeoTIFF file."
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=str,
+        default=os.getcwd(),
+        help="Path to the output directory. If not provided; current directory"
+    )
+
+    return parser.parse_args()
+
 
 
 class Sentinel3_olci_reader_and_CF_converter:
@@ -266,4 +298,54 @@ class Sentinel3_olci_reader_and_CF_converter:
                 return None, None
         else:
             return None, None
+
+
+
+def main():
+
+    # Log to console
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    log_info = logging.StreamHandler(sys.stdout)
+    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(log_info)
+
+
+
+    args = parse_args()
+
+    for path in args.input:
+
+        indir = Path(path).parent
+        product = str(os.path.splitext(os.path.basename(path))[0])
+        outdir = Path(args.output)
+        outdir.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if product.startswith("S3") or args.data_type == 'S3':
+
+                conversion_object = Sentinel3_olci_reader_and_CF_converter(
+                    product=product,
+                    indir=indir,
+                    outdir=outdir)
+                
+        except (AttributeError, TypeError, FileNotFoundError) as e:
+            print(f"Error during Sentinel-3 conversion: {e}")
+            
+        conversion_object.run()
+
+        if args.format == 'geotiff':
+        
+            utils.write_to_geotiff(conversion_object, indir, product, outdir)                    
+
+        if args.format == 'netcdf':
+
+            if conversion_object.read_ok:
+                conversion_object.write_to_NetCDF(outdir, outdir, product, 7)
+
+
+
+if __name__ == '__main__':
+
+    main()
 

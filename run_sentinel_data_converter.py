@@ -1,33 +1,3 @@
-# import os
-# import re
-# import sys
-# import math
-# import logging
-# import pathlib
-# from pathlib import Path
-# from collections import defaultdict
-# import datetime as dt
-# import xml.etree.ElementTree as ET
-# import numpy as np
-# import netCDF4
-# import xarray as xr
-# import rasterio
-# import scipy.ndimage
-# import geopandas as geopd
-# import pyproj
-# from pyproj import CRS
-# import utils as utils
-# import constants as cst
-# import argparse
-# import io
-# from io import BytesIO
-# from netCDF4 import Dataset
-# from rasterio.io import MemoryFile
-# import tempfile
-# import rioxarray as rio
-# from s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
-# from s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
-# from s3_olci_l1_reader_and_CF_converter import Sentinel3_olci_reader_and_CF_converter
 
 
 import os
@@ -46,11 +16,11 @@ logger = logging.getLogger(__name__)
 def parse_args():
     parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
-            description='Script to read and convert Sentinel 2 data to NetCDF or GeoTIFF. Inputs are: \n'+
+            description='Script to read and convert Sentinel data to NetCDF or GeoTIFF. Inputs are: \n'+
             'input: either a list with paths to the sentinel data or a path to a directory containing sentinel data\n'+
             'output (not mandatory): either the path only of where to write the parent file or the path + parent filename or the parent filename only\n'+
             'format: either NetCDF or GeoTIFF (if GeoTIFF, output is a directory containing files for each individual raster band)\n'+
-            'data_type: either Sentinel1 (S1), Sentinel 2 (S2), or Sentinel 3 (S3)\n'+
+            'data_type: (not mandatory) either Sentinel1 (S1), Sentinel 2 (S2), or Sentinel 3 (S3)\n'+
             'e.g. S2_reader_and_converter_NetCDF_GeoTIFF -i /path/to/sentinel/data -f NetCDF -o /path/to/output.nc - dt S2\n'+
             'e.g. S2_reader_and_converter_NetCDF_GeoTIFF -i /path/to/sentinel/data -f GeoTIFF -o /path/to/outputfiles -dt S2\n'+
             '...'
@@ -59,7 +29,7 @@ def parse_args():
     parser.add_argument(
         "--input", '-i',
         required=True,
-        type=parse_input,
+        type=utils.parse_input,
         help="Required: either a .txt file with one /path/to/SAFE.zip per line, or a single valid /path/to/SAFE.zip"
     )
 
@@ -87,18 +57,17 @@ def parse_args():
 
 
 
-
-def parse_input(path):
-    if path.endswith(".txt") and path.is_file():
-        # Read file and return list of paths
-        with path.open() as f:
-            return [line.strip() for line in f if line.strip()]
-        print('Path is list!')
-    elif Path(path).exists():
-        # Return single path in a list
-        return [str(path)]
-    else:
-        raise argparse.ArgumentTypeError(f"Invalid path or file: {path}")
+# def parse_input(path):
+#     if path.endswith(".txt") and path.is_file():
+#         # Read file and return list of paths
+#         with path.open() as f:
+#             return [line.strip() for line in f if line.strip()]
+#         print('Path is list!')
+#     elif Path(path).exists():
+#         # Return single path in a list
+#         return [str(path)]
+#     else:
+#         raise argparse.ArgumentTypeError(f"Invalid path or file: {path}")
 
 
 

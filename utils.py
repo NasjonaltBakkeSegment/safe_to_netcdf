@@ -2,31 +2,6 @@
 Tools -
 """
 
-# from pathlib import Path
-# import lxml.etree as ET
-# import datetime as dt
-# import resource
-# import subprocess as sp
-# import zipfile
-# import logging
-# import yaml
-# from pkg_resources import resource_string
-# import shapely.wkt, shapely.ops
-# import rasterio
-# import argparse
-# import io
-# from io import BytesIO
-# from netCDF4 import Dataset
-# from rasterio.io import MemoryFile
-# import tempfile
-# import rioxarray as rio
-# import xarray as xr
-# import re
-# from s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
-# from s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
-# from s3_olci_l1_reader_and_CF_converter import Sentinel3_olci_reader_and_CF_converter
-# import os
-# import shutil
 
 from pathlib import Path
 import lxml.etree as ET
@@ -43,6 +18,7 @@ from rasterio.io import MemoryFile
 import tempfile
 import xarray as xr
 import re
+import argparse
 
 
 
@@ -438,5 +414,18 @@ def extract_band_code(filename):
     if match:
         return 'B' + match.group(1)
     return None
+
+
+def parse_input(path):
+    if path.endswith(".txt") and path.is_file():
+        # Read file and return list of paths
+        with path.open() as f:
+            return [line.strip() for line in f if line.strip()]
+        logger.info('Path is list!')
+    elif Path(path).exists():
+        # Return single path in a list
+        return [str(path)]
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid path or file: {path}")
 
 
