@@ -57,21 +57,6 @@ def parse_args():
 
 
 
-# def parse_input(path):
-#     if path.endswith(".txt") and path.is_file():
-#         # Read file and return list of paths
-#         with path.open() as f:
-#             return [line.strip() for line in f if line.strip()]
-#         print('Path is list!')
-#     elif Path(path).exists():
-#         # Return single path in a list
-#         return [str(path)]
-#     else:
-#         raise argparse.ArgumentTypeError(f"Invalid path or file: {path}")
-
-
-
-
 def main():
 
     # Log to console
