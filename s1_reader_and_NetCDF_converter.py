@@ -48,7 +48,6 @@ def parse_args():
     
     parser.add_argument(
         "--input", '-i',
-        required=True,
         type=utils.parse_input,
         help="Required: either a .txt file with one /path/to/SAFE.zip per line, or a single valid /path/to/SAFE.zip"
     )
@@ -1143,11 +1142,25 @@ def main():
     logger.addHandler(log_info)
 
     args = parse_args()
+    
+    # let user choose whether to enter products in script or via cmd line
+    if args.input:
+        paths = args.input
+    else:
+        paths = ['provide/path/to/product1',
+                 'provide/path/to/product2'
 
-    for path in args.input:
+        ]
+
+    for path in paths:
 
         indir = Path(path).parent
-        product = str(os.path.splitext(os.path.basename(path))[0])
+
+        if path.endswith('.zip'):
+            product = str(os.path.splitext(os.path.basename(path))[0])
+        else:
+            product = str(os.path.basename(path))
+
         outdir = Path(args.output)
         outdir.parent.mkdir(parents=True, exist_ok=True)
 

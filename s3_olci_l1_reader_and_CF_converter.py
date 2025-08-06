@@ -45,13 +45,12 @@ def parse_args():
             'output (not mandatory): either the path only of where to write the parent file or the path + parent filename or the parent filename only\n'+
             'format: either NetCDF or GeoTIFF (if GeoTIFF, output is a directory containing files for each individual raster band)\n'+
             'e.g. s3_olci_l1_reader_and_CF_converter.py -i /path/to/sentinel/data -f NetCDF -o /path/to/output.nc \n'+
-            'e.g. s3_olci_l1_reader_and_CF_converter.py -i /path/to/sentinel/data -f GeoTIFF -o /path/to/outputfiles \n'+
+            'e.g. s3_olci_l1_reader_and_CF_converter.py -i /path/to/sentinel/data -f GeoTIFF -o /path/to/outputfiles.txt \n'+
             '...'
             )
     
     parser.add_argument(
         "--input", '-i',
-        required=True,
         type=utils.parse_input,
         help="Required: either a .txt file with one /path/to/SAFE.zip per line, or a single valid /path/to/SAFE.zip"
     )
@@ -311,13 +310,26 @@ def main():
     logger.addHandler(log_info)
 
 
-
     args = parse_args()
 
-    for path in args.input:
+    # let user choose whether to enter products in script or via cmd line
+    if args.input:
+        paths = args.input
+    else:
+        paths = ['provide/path/to/product1',
+                 'provide/path/to/product2'
+
+        ]
+
+    for path in paths:
 
         indir = Path(path).parent
-        product = str(os.path.splitext(os.path.basename(path))[0])
+
+        if path.endswith('.zip'):
+            product = str(os.path.splitext(os.path.basename(path))[0])
+        else:
+            product = str(os.path.basename(path))
+
         outdir = Path(args.output)
         outdir.parent.mkdir(parents=True, exist_ok=True)
 
