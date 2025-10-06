@@ -28,8 +28,8 @@ import pyproj
 import scipy.ndimage
 from osgeo import gdal
 import geopandas as geopd
-from . import utils as utils
-from . import constants as cst
+import utils as utils
+import constants as cst
 import logging
 gdal.UseExceptions()
 
@@ -136,7 +136,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         nxa, nya = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape
 
         # output filename
-        out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
+        out_netcdf = (pathlib.Path(nc_outpath) / pathlib.Path(self.product_id)).with_suffix('.nc')
 
         with (netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')) as ncout:
             ncout.createDimension('time', 0)

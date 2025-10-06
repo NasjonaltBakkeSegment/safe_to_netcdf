@@ -15,8 +15,8 @@ import sys
 import pathlib
 import numpy as np
 import isodate
-from . import utils
-from . import constants as cst
+import utils
+import constants as cst
 
 logger = logging.getLogger(__name__)
 
