@@ -1,0 +1,85 @@
+all:
+  time:
+    long_name: 'reference time of satellite image'
+    calendar: 'gregorian'
+    standard_name: 'time'
+    coverage_content_type: 'coordinate'
+    # units are hardcoded into software to compute base time.
+S1:
+  lat:
+    long_name: 'latitude'
+    standard_name: 'latitude'
+    units: 'degrees_north'
+    coverage_content_type: 'coordinate'
+  lon:
+    long_name: 'longitude'
+    standard_name: 'longitude'
+    units: 'degrees_east'
+    coverage_content_type: 'coordinate'
+  Amplitude_: # Used for all variables with this prefix
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+    standard_name: "surface_backwards_scattering_coefficient_of_radar_wave"
+    # 'long_name' and 'polarisation' defined in code
+  crsWGS84:
+    grid_mapping_name: "latitude_longitude"
+    semi_major_axis: "6378137"
+    inverse_flattening: "298.2572235604902"
+  sigmaNought_: # Used for all variables with this prefix
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+    # 'long_name' and 'polarisation' defined in code
+  betaNought_: # Used for all variables with this prefix
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+    # 'long_name' and 'polarisation' defined in code
+  gamma_: # Used for all variables with this prefix
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+    # 'long_name' and 'polarisation' defined in code
+  dn_: # Used for all variables with this prefix
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+    # 'long_name' and 'polarisation' defined in code
+  noiseCorrectionMatrix_: # Used for all variables with this prefix
+    long_name: 'Thermal noise correction vector power values.'
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+  swathList:
+    long_name: 'Subswath List'
+    standard_name: "status_flag"
+    units: "1"
+    coordinates: "lat lon"
+    grid_mapping: "crsWGS84"
+  GCP_azimuthTime_:
+    units: "s"
+    long_name: "Zero Doppler azimuth time to which grid point applies [UTC]."
+    # 'comment' defined in code
+  GCP_slantRangeTime_:
+    units: "s"
+    long_name: "Two way slant range time to grid point."
+  GCP_line_:
+    long_name: "Reference image MDS line to which this geolocation grid point applies."
+  GCP_pixel_:
+    long_name: "Reference image MDS sample to which this geolocation grid point applies"
+  GCP_latitude_:
+    units: "degrees"
+    long_name: "Geodetic latitude of grid point."
+  GCP_longitude_:
+    units: "degrees"
+    long_name: "Geodetic longitude of grid point."
+  GCP_height_:
+    units: "m"
+    long_name: "Height of the grid point above sea level."
+  GCP_incidenceAngle_:
+    units: "degrees"
+    long_name: "Incidence angle to grid point."
+  GCP_elevationAngle_:
+    units: "degrees"
+    long_name: "Elevation angle to grid point."
