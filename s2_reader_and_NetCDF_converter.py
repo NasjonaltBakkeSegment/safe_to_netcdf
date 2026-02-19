@@ -6,9 +6,6 @@
 #                files, etc. as raster layers as well as a method converting
 #                the product to netCDF.
 #
-#                Note: the routine also works for S2 MSI L1C products produced
-#                by ESA with Norwegian DEM (*DTERRENGDATA* products).
-#
 # Author(s):     Trygve Halsne, Elodie Fernandez
 # Created:
 # Modifications:
@@ -27,7 +24,7 @@ import osgeo.osr as osr
 import pyproj
 import scipy.ndimage
 from osgeo import gdal
-import geopandas as geopd
+#import geopandas as geopd
 import utils as utils
 import constants as cst
 import logging
@@ -54,6 +51,7 @@ class Sentinel2_reader_and_NetCDF_converter:
         self.uuid = colhub_uuid
         self.product_id = product
         file_path = indir / (product + '.zip')
+        print(file_path)
         if file_path.exists():
             self.input_zip = file_path
         else:
@@ -256,7 +254,7 @@ class Sentinel2_reader_and_NetCDF_converter:
             nc_crs.false_northing = source_crs.GetProjParm('false_northing')
             nc_crs.epsg_code = source_crs.GetAttrValue('AUTHORITY', 1)
             nc_crs.crs_wkt = self.reference_band.GetProjection()
-
+            
             # Add vector layers
             ##########################################################
             # Status
@@ -329,7 +327,7 @@ class Sentinel2_reader_and_NetCDF_converter:
                     else:
                         raster_data = SourceDS.GetRasterBand(i).GetVirtualMemArray()
                     varout[0, :] = raster_data
-
+            
             # Add sun and view angles
             ##########################################################
             # Status
@@ -396,6 +394,15 @@ class Sentinel2_reader_and_NetCDF_converter:
                                  "platform]. platform corresponds to 0:Sentinel-2A, 1:Sentinel-2B.."
             nc_orb[0, :] = [int(rel_orb_nb), int(orb_nb), cst.platform_id[platform]]
 
+            # Add integrated information as variables
+            logger.info('Adding integraed information')
+            cc_varname = 'cloud_coverage'
+            varout_cloud_cover = ncout.createVariable(cc_varname, np.float32, ('time'))
+            varout_cloud_cover.units = '1'
+            varout_cloud_cover.standard_name = 'cloud_area_fraction'
+            varout_cloud_cover.long_name = 'Integrated percentage cloud cover for all pixel values.'
+            varout_cloud_cover[0] = self.globalAttribs['CLOUD_COVERAGE_ASSESSMENT']
+            
             # Add global attributes
 
             logger.info('Adding global attributes')
@@ -647,25 +654,25 @@ if __name__ == '__main__':
     log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_info)
 
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
+    workdir = pathlib.Path('/home/trygveh/Downloads/tmp')
 
     products = [
-            'S2A_MSIL2A_20231031T130301_N0509_R038_T27WXM_20231031T154853',
-            'S2A_MSIL1C_20231031T130301_N0509_R038_T27WWM_20231031T145931',
-            'S2B_MSIL1C_20231031T135229_N0509_R110_T25WFT_20231031T155138',
-            'S2B_MSIL2A_20231031T135229_N0509_R110_T25WDP_20231031T160709'
+            #'S2C_MSIL1C_20260109T105431_N0511_R051_T32VLM_20260109T124919',
+            'S2B_MSIL2A_20260114T105309_N0511_R051_T32VKL_20260114T144823'
     ]
 
     for product in products:
 
         outdir = workdir / product
         outdir.parent.mkdir(parents=False, exist_ok=True)
+        print(workdir)
+        print(outdir,product)
         conversion_object = Sentinel2_reader_and_NetCDF_converter(
             product=product,
             indir=outdir,
             outdir=outdir)
         if conversion_object.read_ok:
-            conversion_object.write_to_NetCDF(outdir, 7)
+            conversion_object.write_to_NetCDF(outdir, 2)
 
 
 
