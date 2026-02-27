@@ -558,7 +558,6 @@ class S1SAFEFile(SAFEFile):
             noiseVector -- Noise vector containing range and azimuth noise
                            values retrieved from the readNoiseData method.
         """
-        noiseRangeVectorList = noiseVector['range']
         if 'azimuth' in noiseVector:
             noiseAzimuthVectorList = noiseVector['azimuth']
         else:
@@ -741,20 +740,7 @@ class S1SAFEFile(SAFEFile):
                         else:
                             noiseAzimuthVector_ = np.zeros(1)
                             noiseAzimuthVector_[:] = noiseAzimuthLUT[0]
-                        # print len(noiseAzimuthVector_)
-                        # plt.plot(line, noiseAzimuthLUT, 'go-', lineIndex, noiseAzimuthVector_,
-                        # '-')
-                        # plt.legend(['sub-sampled','interpolated'])
-                        # plt.show()
-
-                        # create row vector
-                        # noiseAzimuthVector_ = noiseAzimuthVector_.T
-                        # print sampleIndex
-                        # print numberOfLines
-                        # noiseAzimuthMatrix[lineIndex,sampleIndex] = np.tile(
-                        # noiseAzimuthVector_,(numberOfSamples,1))
-                        # noiseAzimuthMatrix[firstAzimuthLine:lastAzimuthLine+1,
-                        # firstRangeSample:lastRangeSample+1]=noiseAzimuthVector_
+                        
                         noiseAzimuthMatrix[firstAzimuthLine:lastAzimuthLine + 1,
                         firstRangeSample:lastRangeSample + 1] = np.tile(noiseAzimuthVector_,
                                                                         (numberOfSamples, 1)).T
@@ -780,26 +766,17 @@ class S1SAFEFile(SAFEFile):
                             sys.exit([1])
 
                     noiseRangeVectorList_ = np.zeros((numberOfSamples, len(validRangeVectorKeys)))
-                    # noiseRangeVectorLine_ = np.zeros((numberOfSamples,
-                    # len(validRangeVectorKeys))) #should be numberOfLines?
                     noiseRangeVectorLine_ = np.zeros((len(validRangeVectorKeys)))
 
-                    # print validRangeVectorKeys, noiseRangeVectorFirstIndex
                     for index, key in enumerate(validRangeVectorKeys):
-                        rangeRecordIndex = index + noiseRangeVectorFirstIndex
-                        rangeRecPixels_ = np.array(noiseRangeVectorList[key][1].split(),
-                                                   int)  # getNoiseRangeRecordByIndex (
-                        # rangeRecordIndex)
+                        rangeRecPixels_ = np.array(noiseRangeVectorList[key][1].split(), int)
                         rangeRecLines_ = np.array(noiseRangeVectorList[key][2].split(), float)
                         rangePixelToInterp_0 = np.argwhere(
                             rangeRecPixels_ >= firstRangeSample).min()
                         rangePixelToInterp_n = np.argwhere(rangeRecPixels_ <= lastRangeSample).max()
-                        # rangePixelToInterp = rangeRecPixels_[
-                        # rangePixelToInterp_0:rangePixelToInterp_n+1]
                         rangePixelToInterp = rangeRecPixels_[
                                              rangePixelToInterp_0:rangePixelToInterp_n + 1]
-                        # rangePixelToInterp = rangeRecPixels_[(rangeRecPixels_ >=
-                        # firstRangeSample) & (rangeRecPixels_ <= lastRangeSample)]
+
 
                         intp1_range = interpolate.interp1d(rangePixelToInterp, rangeRecLines_[
                                                                                rangePixelToInterp_0:rangePixelToInterp_n + 1],
@@ -819,9 +796,7 @@ class S1SAFEFile(SAFEFile):
                                                               fill_value='extrapolate')
                             noiseRangeMatrix_[i, :] = intp1_line(lineIndex)
                         else:
-                            noiseRangeMatrix_[i, :] = noiseRangeVectorList_[
-                                i]  # Not able to perform azimuth interpolation. Hence writing the same value to each line index.
-
+                            noiseRangeMatrix_[i, :] = noiseRangeVectorList_[i]
                     noiseRangeMatrix[lineIndex[0]:lineIndex[-1] + 1,
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 

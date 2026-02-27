@@ -7,8 +7,7 @@ from lib.safe.safe_s1 import S1SAFEFile
 from lib.safe.safe_s2 import S2SAFEFile
 from lib.netcdf.netcdf_s1 import S1NetCDFFile
 from lib.netcdf.netcdf_s2 import S2NetCDFFile
-from lib.utils import load_variable_attributes, load_global_attributes, get_key
-#import config.constants as cst
+from lib.utils import load_variable_attributes, load_global_attributes
 
 # Configure logging with timestamps
 logging.basicConfig(
@@ -24,12 +23,13 @@ def log_memory_usage(stage):
     logger.info(f"[{stage}] Memory usage: {memory_info.rss / 1024**2:.2f} MB (RSS), "
                 f"{memory_info.vms / 1024**2:.2f} MB (VMS)")
 
+# TODO: Make default arguments relative to this script?
 def transform(
         product_name,
         safedir=None,
         netcdfdir=None,
         geotiffdir=None,
-        tmpdir = '/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/safe_to_netcdf/tmp',
+        tmpdir = None,
         global_attributes_config = 'config/global_attributes.yaml',
         variable_attributes_config = 'config/variable_attributes.yaml',
         product_id = None,
@@ -226,9 +226,6 @@ if __name__ == "__main__":
         target=args.target,
     )
 
-# TODO: Redo for S1
-# TODO: Develop for S2 and S3 OLCI
+# TODO: Develop S3 OLCI
 # TODO: Check memory usage to see how many can run in parallel
-# TODO: Test run and write times with different compressions and chunk sizes
-# TODO: Write to geoTIFF
-# TODO: Update routine to retrieve global attributes from MMD where possible
+# TODO: Check how to execute it from wrapper

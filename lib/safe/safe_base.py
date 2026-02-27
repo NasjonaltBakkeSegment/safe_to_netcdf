@@ -2,10 +2,6 @@ import subprocess as sp
 import shutil
 from collections import defaultdict
 import logging
-from pathlib import Path
-import lxml.etree as ET
-import rasterio
-import numpy as np
 
 try:
     from lib.utils import xml_read

@@ -212,8 +212,6 @@ class S2NetCDFFile(NetCDFFile):
                 logger.info("{}".format(GeoT))
                 DataType = gdal_nc_data_types[
                     gdal.GetDataTypeName(SourceDS.GetRasterBand(i).DataType)]
-                # TODO: Might need to use different chunk size here to be consistent with historic data
-                # But then the data writing function might also need updating... or just update the attribute
                 self.variables[varName] = self.ncout.createVariable(
                     varName, DataType, ('time', 'y', 'x'), fill_value=0,
                     zlib=True, complevel=self.compression_level, chunksizes=self.chunk_size
@@ -233,7 +231,6 @@ class S2NetCDFFile(NetCDFFile):
                                                         zoom=safe_file.xSize / xsize, order=0)
                 else:
                     raster_data = SourceDS.GetRasterBand(i).GetVirtualMemArray()
-                #varout[0, :] = raster_data
                 self.write_variable_with_preprocessing(
                     varName, raster_data,
                     process_chunk=None,

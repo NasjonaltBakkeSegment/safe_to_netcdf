@@ -1,19 +1,12 @@
-import subprocess as sp
 from osgeo import gdal
-import shutil
 import zipfile
 import math
 from collections import defaultdict
 import logging
 import pathlib
-from pathlib import Path
-import lxml.etree as ET
-import rasterio
 import numpy as np
 import pyproj
-from pyproj import CRS
-from pyproj import CRS as PyCRS
-import shapely.wkt, shapely.ops
+import shapely.wkt
 
 try:
     from lib.utils import xml_read
@@ -62,23 +55,9 @@ class S2SAFEFile(SAFEFile):
 
         self.img_data_dirs = list(self.SAFE_dir.rglob("IMG_DATA"))
         self.create_file_lists()
-        #self.setup_rasterio_source()
         self.set_gdal_object()
         self.readSunAndViewAngles()
         self.get_dimensions()
-
-    def _get_xml_path(self):
-        # TODO: Is this in use?
-        xmlFile = self.SAFE_dir / 'manifest.safe'
-        if not xmlFile.is_file():
-            xmlFile = self.SAFE_dir / 'MTD_MSIL1C.xml'
-            if not xmlFile.is_file():
-                logger.error(f'Main file not found. Exiting')
-                raise
-            self.dterrengdata = True
-
-        logger.debug(f'Main file: {xmlFile}')
-        return xmlFile
 
     def create_file_lists(self):
         """
@@ -171,8 +150,7 @@ class S2SAFEFile(SAFEFile):
         if currXml is None or not currXml:
             logger.error("xml file not found in SAFE directory. Hence exiting")
             self.read_ok = False
-            # TODO: This might need adapting
-            return False
+            return
 
         relative_path = str(currXml).lstrip("/")
         absolute_path = self.SAFE_dir / relative_path
@@ -255,40 +233,6 @@ class S2SAFEFile(SAFEFile):
         # sun and view angles raster resolution
         self.xaSize, self.yaSize = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape
 
-    def get_dimensions_old(self):
-        #! Deprecated
-        ten_meter_bands = {"B02", "B03", "B04", "B08"}
-
-        # Get reference band (10m resolution)
-        reference_band_set = False
-        print('HERE', self.img_data_dirs)
-        for img_data_dir in self.img_data_dirs:
-            if img_data_dir.is_dir():
-                for subdir in sorted(img_data_dir.iterdir()):
-                    if subdir.is_file():
-                        band_code = subdir.stem[-3:]
-                        if band_code in ten_meter_bands:
-                            with rasterio.open(subdir) as ref:
-                                self.reference_band = ref
-                                self.ySize, self.xSize = ref.height, ref.width
-                                reference_band_set = True
-                            break
-                    elif subdir.is_dir() and '10m' in subdir.name:
-                        for file_path in sorted(subdir.iterdir()):
-                            if file_path.is_file() and not any(x in str(file_path) for x in ['TCI', 'True color image']):
-                                with rasterio.open(file_path) as ref:
-                                    self.reference_band = ref
-                                    self.ySize, self.xSize = ref.height, ref.width
-                                    reference_band_set = True
-                                break
-                if reference_band_set:
-                    break
-
-        if not reference_band_set:
-            raise RuntimeError("No 10m reference band found")
-
-        self.xaSize, self.yaSize = self.sunAndViewAngles[list(self.sunAndViewAngles)[0]].shape
-    
     def genLatLon(self, nx, ny, latlon=True):
         """ Method providing latitude and longitude arrays or projection
             coordinates depending on latlon argument."""
@@ -315,41 +259,6 @@ class S2SAFEFile(SAFEFile):
         longitude, latitude = pyproj.Transformer.from_crs(current_projection, target_projection).transform(xp, yp)
 
         return latitude, longitude
-    
-    def genLatLon_old(self, nx, ny, latlon=True):
-        #! Deprecated
-        """Generate latitude/longitude or projection coordinates using rasterio + pyproj."""
-
-        # Get affine transform from rasterio
-        transform = self.reference_band.transform  # Affine transform
-        ulx, xres, xskew, uly, yskew, yres = (
-            transform.c,
-            transform.a,
-            transform.b,
-            transform.f,
-            transform.d,
-            transform.e
-        )
-
-        # UTM coordinates (projected)
-        xnp = np.arange(nx) * xres + ulx
-        ynp = np.arange(ny) * yres + uly
-
-        if not latlon:
-            return xnp, ynp
-
-        # Create coordinate grid in UTM
-        xx, yy = np.meshgrid(xnp + xres / 2, ynp + yres / 2)  # center of pixels
-
-        # Reproject UTM to WGS84 lat/lon
-        transformer = pyproj.Transformer.from_crs(
-            self.reference_band.crs,
-            "EPSG:4326",  # WGS84
-            always_xy=True
-        )
-        lon, lat = transformer.transform(xx, yy)
-
-        return lat, lon
 
     def get_global_attributes(self):
 
