@@ -29,6 +29,7 @@ class S1SAFEFile(SAFEFile):
 
         super().__init__(product, zipdir, tmpdir)
 
+        self.SAFE_dir = (tmpdir / self.product_name).with_suffix('.SAFE')
         self.gcps = []  # GCPs from gdal used for generation of lat lon
         self.polarisation = []
         self.xSize = None

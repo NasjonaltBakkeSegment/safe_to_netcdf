@@ -5,9 +5,11 @@ import argparse
 from pathlib import Path
 from lib.safe.safe_s1 import S1SAFEFile
 from lib.safe.safe_s2 import S2SAFEFile
+from lib.safe.sen3 import SEN3File
 from lib.netcdf.netcdf_s1 import S1NetCDFFile
 from lib.netcdf.netcdf_s2 import S2NetCDFFile
-from lib.utils import load_variable_attributes, load_global_attributes
+from lib.netcdf.netcdf_s3 import S3NetCDFFile
+from lib.utils import load_variable_attributes, load_global_attributes, update_global_attributes
 
 # Configure logging with timestamps
 logging.basicConfig(
@@ -23,7 +25,6 @@ def log_memory_usage(stage):
     logger.info(f"[{stage}] Memory usage: {memory_info.rss / 1024**2:.2f} MB (RSS), "
                 f"{memory_info.vms / 1024**2:.2f} MB (VMS)")
 
-# TODO: Make default arguments relative to this script?
 def transform(
         product_name,
         safedir=None,
@@ -70,6 +71,9 @@ def transform(
     elif mission == 'S2':
         safe_file = S2SAFEFile(product=product_name, zipdir=safedir, tmpdir=tmpdir)
         netcdf_file = S2NetCDFFile(product=product_name, directory=netcdfdir)
+    elif mission == 'S3':
+        safe_file = SEN3File(product=product_name, zipdir=safedir, tmpdir=tmpdir)
+        netcdf_file = S3NetCDFFile(product=product_name, directory=netcdfdir)
 
     # Prepare the SAFEFile instance for use
     logger.info("Preparing SAFEFile instance for use.")
@@ -81,13 +85,14 @@ def transform(
         mission,
     )
 
-    logger.info("Initializing NetCDF file.")
-    netcdf_file.initialise()
+    if mission in ['S1', 'S2']:
+        logger.info("Initializing NetCDF file.")
+        netcdf_file.initialise()    
+        
+        logger.info("Creating NetCDF dimensions.")
+        netcdf_file.create_dimensions(safe_file)
 
-    logger.info("Creating NetCDF dimensions.")
-    netcdf_file.create_dimensions(safe_file)
-
-    logger.info("Creating time variable in NetCDF.")
+        logger.info("Creating time variable in NetCDF.")
     if mission == 'S1':
         netcdf_file.create_time(safe_file.globalAttribs["ACQUISITION_START_TIME"])
 
@@ -162,23 +167,42 @@ def transform(
 
         logger.info('Adding integrated information as variables')
         netcdf_file.add_integrated_information_as_variables(safe_file)
+    
+    elif mission == 'S3':
+        #! Currently only works for OLCI L1
+        netcdf_file.concatenate_radiance_bands(safe_file.bands)
+
+        netcdf_file.add_time_dimension(safe_file.time_file)
+
+        netcdf_file.rename_variables()
 
     logger.info("Writing variable attributes to NetCDF.")
     netcdf_file.write_variable_attributes(variable_attributes)
 
-    logger.info("Retrieving global attributes from SAFEFile.")
-    safe_file.get_global_attributes()
-
     logger.info("Writing global attributes to NetCDF.")
-    global_attributes_from_config = load_global_attributes(global_attributes_config, platform)
-    global_attributes = global_attributes_from_config | safe_file.globalAttribs
+    global_attributes = load_global_attributes(global_attributes_config, product_name)
+    
+    if mission in ['S1', 'S2']:
+        logger.info("Retrieving global attributes from SAFEFile.")
+        safe_file.get_global_attributes()
+    
+        global_attributes = global_attributes | safe_file.globalAttribs
+    
     if product_id:
         global_attributes['id'] = product_id
 
+    if mission in ['S1', 'S2']:
+        global_attributes = update_global_attributes(global_attributes)
+    elif mission in ['S3']:
+        netcdf_file.compute_bounding_box()
+    
     netcdf_file.write_global_attributes(global_attributes)
 
+    if mission in ['S3']:
+        netcdf_file.ds.attrs = update_global_attributes(netcdf_file.ds.attrs)
+
     logger.info("Closing NetCDF file and deleting unzipped file.")
-    netcdf_file.close()
+    netcdf_file.save_and_close()
     safe_file.finalize_usage()
 
     log_memory_usage("After transformation")
@@ -199,7 +223,7 @@ if __name__ == "__main__":
                         help="Directory containing GeoTIFF file for the product (default: %(default)s).")
 
     # Other optional arguments with default values
-    parser.add_argument("--tmpdir", type=str, default='/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/safe_to_netcdf/tmp',
+    parser.add_argument("--tmpdir", type=str, default='tmp/',
                         help="Path to the temporary directory (default: %(default)s).")
     parser.add_argument("--global_attributes_config", type=str, default='config/global_attributes.yaml',
                         help="Path to the global attributes configuration file (default: %(default)s).")

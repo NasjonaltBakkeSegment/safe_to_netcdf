@@ -31,6 +31,7 @@ class S2SAFEFile(SAFEFile):
 
         super().__init__(product, zipdir, tmpdir)
 
+        self.SAFE_dir = (tmpdir / self.product_name).with_suffix('.SAFE')
         self.baseline = self.product_name.split('_')[3]
         self.processing_level = 'Level-' + self.product_name.split('_')[1][4:6]
         self.imageFiles = defaultdict(list)

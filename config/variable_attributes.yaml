@@ -113,3 +113,13 @@ S2:
     units: '1'
     standard_name: 'cloud_area_fraction'
     long_name: 'Integrated percentage cloud cover for all pixel values.'
+S3:
+  altitude:
+    #coordinates: 'lon lat'
+    standard_name: 'altitude'
+    coverage_content_type: 'auxiliaryInformation'
+    positive: 'up'
+  _radiance:
+    #coordinates: 'time altitude lat lon'
+    coverage_content_type: 'physicalMeasurement'
+    standard_name: 'upwelling_radiance_per_unit_wavelength_in_air'

@@ -1,4 +1,5 @@
 import yaml
+import datetime as dt
 from pathlib import Path
 import lxml.etree as ET
 
@@ -30,10 +31,21 @@ def load_variable_attributes(config_path, mission):
         variable_attributes = config['all'] | config[mission]
         return variable_attributes
 
-def load_global_attributes(config_path, platform):
+def load_global_attributes(config_path, product_name):
+    platform = product_name[0:3]
     config = load_config(config_path)
     mission = platform[0:2]
-    global_attributes = config['global'] | config [mission] | config [platform]
+    global_attributes = config['all'] | config [mission] | config [platform] 
+    if mission == 'S3':
+        if '_OL_' in product_name:
+            global_attributes = global_attributes | config['S3_OL']
+        elif '_SL_' in product_name:
+            global_attributes = global_attributes | config['S3_SL']
+        elif '_SR_' in product_name:
+            global_attributes = global_attributes | config['S3_SR']
+        elif '_SY_' in product_name:
+            global_attributes = global_attributes | config['S3_SY']             
+            
     return global_attributes
 
 def load_config(config_path):
@@ -57,3 +69,19 @@ def get_key(my_dict,val):
              return key
 
     return "There is no such Key"
+
+def update_global_attributes(global_attributes):
+
+    t0 = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+    global_attributes.update({
+        'date_metadata_modified': t0,
+        'date_metadata_modified_type': 'Created',
+        'date_created': t0,
+        'history': f'{t0}: Converted from SAFE to NetCDF by NBS team.',
+    })
+
+    if global_attributes['geospatial_lat_max'] > 70:
+        global_attributes['collection'] += ',SIOS'
+    
+    return global_attributes

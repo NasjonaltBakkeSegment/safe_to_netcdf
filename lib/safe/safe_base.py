@@ -26,7 +26,6 @@ class SAFEFile:
             file_path_safe = zipdir / (product + '.SAFE.zip')
             if file_path_safe.exists():
                 self.input_zip = file_path_safe
-        self.SAFE_dir = (tmpdir / self.product_name).with_suffix('.SAFE')
         self.xmlFiles = defaultdict(list)
         self.read_ok = True
 

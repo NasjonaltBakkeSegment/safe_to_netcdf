@@ -1,4 +1,4 @@
-global:
+all:
   institution: 'Norwegian Meteorological Institute (METNO)'
   creator_role: 'Data center contact'
   creator_name: 'NBS Helpdesk'
@@ -87,3 +87,95 @@ S1C:
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1c'
   instrument: 'Synthetic Aperture Radar (C-band)'
   instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/sar_c_sentinel_1'
+
+S3:
+  Conventions: 'CF-1.7, ACDD-1.3'
+  naming_authority: 'EUMETSAT, ESA: Sentinel 3 PDGS, File Naming Convention'
+  reference: 'https://sentinel.esa.int/web/sentinel/user-guides/sentinel-3-olci'
+  standard_name_vocabulary: 'CF Standard Name Table v69'
+  comment: >
+    This product contains selected information from Copernicus Sentinel-3
+    OLCI product. To obtain all data, please refer to the SAFE format available
+    at colhub.met.no
+  title: 'Sentinel-3 OCLI product in NetCDF/CF'
+  summary: 'Sentinel-3 Ocean and Land Color Instrument product in NetCDF/CF.'
+  keywords_vocabulary: 'GCMD Science Keywords'
+  keywords: 'GCMDSK:Earth Science > SPECTRAL/ENGINEERING > INFRARED WAVELENGTHS > REFLECTED INFRARED, GCMDSK:Earth Science > SPECTRAL/ENGINEERING > VISIBLE WAVELENGTHS > VISIBLE RADIANCE'
+  geospatial_vertical_positive: 'up'
+
+S3A:
+  platform: 'Sentinel-3A'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3a'
+S3B:
+  platform: 'Sentinel-3B'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3b'
+S3C:
+  platform: 'Sentinel-3C'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3c'
+S3D:
+  platform: 'Sentinel-3D'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3d'
+
+S3_OL:
+  instrument: 'Ocean and Land Colour Imager'
+  instrument_vocabulary: https://space.oscar.wmo.int/instruments/view/olci
+  related_information_type: 'Users guide'
+  related_information_description: 'URI to a users guide or product manual for the dataset.'
+  related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
+  iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
+  keywords: 'GCMDSK:Earth Science > Atmosphere > Atmospheric radiation > Reflectance,GEMET:Orthoimagery,GEMET:Land cover'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+
+S3_SR:
+  instrument: 'Synthetic aperture Radar Altimeter'
+  instrument_vocabulary: https://space.oscar.wmo.int/instruments/view/sral
+  related_information_type: 'Users guide'
+  related_information_description: 'URI to a users guide or product manual for the dataset.'
+  related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
+  iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
+  keywords: 'GCMDSK:Earth Science > Spectral/Engineering > RADAR > RADAR backscatter, GCMDSK:Earth Science > Land Surface > Topography > Terrain Elevation, GEMET:Oceanographic geographical features'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+
+S3_SL:
+  instrument: 'Sea and Land Surface Temperature Radiometer'
+  instrument_vocabulary: https://space.oscar.wmo.int/instruments/view/slstr
+  related_information_type: 'Users guide'
+  related_information_description: 'URI to a users guide or product manual for the dataset.'
+  related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
+  iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
+  keywords: 'GCMDSK:Earth Science > Oceans > Ocean Temperature > Sea Surface Temperature, GCMDSK:Earth Science > Land Surface > Surface Thermal Properties > Skin Temperature'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+
+S3_SY:
+  instrument: 'Ocean and Land Colour Imager, Sea and Land Surface Temperature Radiometer'
+  instrument_vocabulary: 'https://space.oscar.wmo.int/instruments/view/olci, https://space.oscar.wmo.int/instruments/view/slstr'
+  related_information_type: 'Users guide'
+  related_information_description: 'URI to a users guide or product manual for the dataset.'
+  related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
+  iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
+  keywords: 'GCMDSK:Earth Science > Oceans > Ocean Temperature > Sea Surface Temperature, GCMDSK:Earth Science > Land Surface > Surface Thermal Properties > Skin Temperature, GCMDSK:Earth Science > Atmosphere > Atmospheric radiation > Reflectance,GEMET:Orthoimagery,GEMET:Land cover'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+
+S5P:
+  platform: 'Sentinel-5P'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_5p'
+  instrument: 'Tropospheric Monitoring Instrument'
+  instrument_vocabulary: https://space.oscar.wmo.int/instruments/view/tropomi
+  related_information_type: 'Users guide'
+  related_information_description: 'URI to a users guide or product manual for the dataset.'
+  related_information_resource: 'https://sentiwiki.copernicus.eu/web/s5p-mission'
+  iso_topic_category: 'climatologyMeteorologyAtmosphere,oceans,imageryBaseMapsEarthCover'
+  keywords: 'GCMDSK:Earth Science > Atmosphere > Atmospheric radiation > Reflectance,GEMET:Orthoimagery,GEMET:Land cover'
+  keywords_vocabulary: 'GCMDSK:GCMD Science Keywords:https://gcmd.earthdata.nasa.gov/kms/concepts/concept_scheme/sciencekeywords,GEMET:INSPIRE Themes:http://inspire.ec.europa.eu/theme'
+  Conventions: 'CF-1.6'
+
+# TODO: Need to add fields for S6
+S6A:
+  platform: 'Sentinel-6A'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6a'
+S6B:
+  platform: 'Sentinel-6B'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6b'
+S6C:
+  platform: 'Sentinel-6C'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6c'

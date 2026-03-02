@@ -65,17 +65,25 @@ class NetCDFFile():
                     setattr(self.variables[variable], attribute, value)
                 matched = True
 
-            # If no exact match, check for a prefix match
+            # If no exact match, check for a affix match
             if not matched:
-                for prefix in variable_attributes:
-                    # Skip full variable names (not prefixes)
-                    if not prefix.endswith('_'):
-                        continue
-                    if variable.startswith(prefix):
-                        for attribute, value in variable_attributes[prefix].items():
+                for affix in variable_attributes:
+                    if affix.startswith('_') and variable.endswith(affix):
+                        # affix is a suffix
+                        for attribute, value in variable_attributes[affix].items():
                             setattr(self.variables[variable], attribute, value)
                         matched = True
                         break  # Exit the loop once a match is found
+                    else:
+                        # affix is a prefix
+                        # Skip full variable names (not affixes)
+                        if not affix.endswith('_'):
+                            continue
+                        if variable.startswith(affix):
+                            for attribute, value in variable_attributes[affix].items():
+                                setattr(self.variables[variable], attribute, value)
+                            matched = True
+                            break  # Exit the loop once a match is found
 
     def write_variable_with_preprocessing(
         self, var_name, array, process_chunk=None, workers=8, sync_every=None, progress_cb=None
@@ -248,19 +256,7 @@ class NetCDFFile():
 
     def write_global_attributes(self, global_attributes):
 
-        t0 = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
-
-        global_attributes.update({
-            'date_metadata_modified': t0,
-            'date_metadata_modified_type': 'Created',
-            'date_created': t0,
-            'history': f'{t0}: Converted from SAFE to NetCDF by NBS team.',
-        })
-
-        if global_attributes['geospatial_lat_max'] > 70:
-            global_attributes['collection'] += ',SIOS'
-
         self.ncout.setncatts(global_attributes)
 
-    def close(self):
+    def save_and_close(self):
         self.ncout.close()

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class S2NetCDFFile(NetCDFFile):
     """
-    Subclass for working with Sentinel-2 SAFE files
+    Subclass for working with Sentinel-2 NetCDF files
     """
     def __init__(self, product, directory, compression_level=7, chunk_size=(1, 2745, 2745)):
 

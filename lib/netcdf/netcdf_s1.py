@@ -7,7 +7,7 @@ except ModuleNotFoundError:
 
 class S1NetCDFFile(NetCDFFile):
     """
-    Subclass for working with Sentinel-1 SAFE files
+    Subclass for working with Sentinel-1 NetCDF files
     """
     def __init__(self, product, directory, compression_level=7, chunk_size=(1, 91, 99)):
 
