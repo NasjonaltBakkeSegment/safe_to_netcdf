@@ -18,7 +18,7 @@ class S3NetCDFFile():
         self.netCDF_path = (self.directory / self.product_name).with_suffix('.nc')
         self.variables = {}
     
-    def concatenate_radiance_bands(self, bands):
+    def concatenate_bands(self, bands):
         self.ds = xr.open_mfdataset(bands, join='exact')
     
     def add_time_dimension(self, time_file):
@@ -123,7 +123,10 @@ class S3NetCDFFile():
                                 self.ds[variable].attrs[attribute] = value
                             matched = True
                             break  # Exit the loop once a match is found
-         #TODO: Remove ancillary variable attribute from bands
+        
+        for variable in self.ds.data_vars:
+            if str(variable).endswith('_radiance'):
+                self.ds[variable].attrs.pop('ancillary_variables')
 
     def save_and_close(self):
         encoding = {

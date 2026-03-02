@@ -28,10 +28,7 @@ class SEN3File(SAFEFile):
 
         super().__init__(product, zipdir, tmpdir)
         self.SAFE_dir = (tmpdir / self.product_name).with_suffix('.SEN3')
-        #self.mainXML = self.SAFE_dir / 'manifest.xml'
         self.mainXML = self.SAFE_dir / 'xfdumanifest.xml'
-
-        # TODO: Add S3 specific attributes
 
     def prepare_for_use(self):
         """
@@ -50,7 +47,10 @@ class SEN3File(SAFEFile):
             self.nc_files.append(self.SAFE_dir / o.find('.//fileLocation').attrib['href'].split('/')[1])
 
     def _categorise_files(self):
-        self.bands = [s for s in self.nc_files if "_radiance.nc" in str(s)]
+        if 'OL_1' in self.product_name:
+            self.bands = [s for s in self.nc_files if "_radiance.nc" in str(s)]
+        elif 'OL_2' in self.product_name:
+            self.bands = [s for s in self.nc_files if "_reflectance.nc" in str(s)]
         self.bands.append([s for s in self.nc_files if "geo_coordinates.nc" in str(s)][0])
 
         self.time_file = [s for s in self.nc_files if "time_coordinates.nc" in str(s)][0]

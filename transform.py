@@ -170,7 +170,7 @@ def transform(
     
     elif mission == 'S3':
         #! Currently only works for OLCI L1
-        netcdf_file.concatenate_radiance_bands(safe_file.bands)
+        netcdf_file.concatenate_bands(safe_file.bands)
 
         netcdf_file.add_time_dimension(safe_file.time_file)
 
