@@ -2,6 +2,8 @@ import yaml
 import datetime as dt
 from pathlib import Path
 import lxml.etree as ET
+import numpy as np
+from scipy import interpolate
 
 def xml_read(xml_file):
     """
@@ -85,3 +87,94 @@ def update_global_attributes(global_attributes):
         global_attributes['collection'] += ',SIOS'
     
     return global_attributes
+
+def chunked_interpolation(y, x, data, yi, xi, chunk_size=1000, overlap=10):
+    """
+    Perform chunked interpolation with overlap for a 2D dataset.
+
+    Parameters:
+        y (np.ndarray): 1D array of y-coordinates.
+        x (np.ndarray): 1D array of x-coordinates.
+        data (np.ndarray): 2D array of data values to interpolate.
+        yi (np.ndarray): 1D array of target y-coordinates.
+        xi (np.ndarray): 1D array of target x-coordinates.
+        chunk_size (int): Size of each chunk (number of rows/columns).
+        overlap (int): Number of rows/columns to overlap between chunks.
+    
+    Returns:
+        np.ndarray: Interpolated data on the (yi, xi) grid.
+    """
+    # Initialize output array
+    result = np.empty((len(yi), len(xi)), dtype=np.float32)
+
+    # Determine number of chunks
+    num_chunks_y = len(y) // chunk_size + (len(y) % chunk_size > 0)
+    num_chunks_x = len(x) // chunk_size + (len(x) % chunk_size > 0)
+
+    # Process data in chunks with overlap
+    for i in range(num_chunks_y):
+        for j in range(num_chunks_x):
+            # Determine chunk boundaries with overlap
+            y_start = max(i * chunk_size - overlap, 0)
+            y_end = min((i + 1) * chunk_size + overlap, len(y))
+            x_start = max(j * chunk_size - overlap, 0)
+            x_end = min((j + 1) * chunk_size + overlap, len(x))
+
+            # Extract chunk of data with overlap
+            y_chunk = y[y_start:y_end]
+            x_chunk = x[x_start:x_end]
+            data_chunk = data[y_start:y_end, x_start:x_end]
+
+            # Interpolate for the chunk
+            tck = interpolate.RectBivariateSpline(y_chunk, x_chunk, data_chunk)
+
+            # Determine the valid (non-overlapping) region for this chunk
+            valid_y_start = max(overlap, i * chunk_size) - y_start
+            valid_y_end = valid_y_start + chunk_size
+            valid_x_start = max(overlap, j * chunk_size) - x_start
+            valid_x_end = valid_x_start + chunk_size
+
+            # Perform interpolation and store results in the valid region
+            result[i * chunk_size:(i + 1) * chunk_size, j * chunk_size:(j + 1) * chunk_size] = \
+                tck(yi[valid_y_start:valid_y_end], xi[valid_x_start:valid_x_end])
+
+    return result
+
+def multiply_2d_arrays_in_chunks(array1, array2, chunk_size):
+    """
+    Multiplies two 2D arrays element-wise in chunks to reduce memory consumption.
+    
+    Args:
+        array1 (np.ndarray): The first 2D array.
+        array2 (np.ndarray): The second 2D array.
+        chunk_size (int): The size of the chunks to process (applies to both rows and columns).
+    
+    Returns:
+        np.ndarray: The resulting 2D array after element-wise multiplication.
+    """
+    # Ensure the inputs are 2D arrays
+    if array1.ndim != 2 or array2.ndim != 2:
+        raise ValueError("Both array1 and array2 must be 2D arrays.")
+    
+    # Ensure the arrays have the same shape
+    if array1.shape != array2.shape:
+        raise ValueError("array1 and array2 must have the same shape.")
+    
+    # Initialize the result array
+    result_array = np.zeros_like(array1)
+    
+    # Process in chunks
+    rows, cols = array1.shape
+    for row_start in range(0, rows, chunk_size):
+        row_end = min(row_start + chunk_size, rows)
+        for col_start in range(0, cols, chunk_size):
+            col_end = min(col_start + chunk_size, cols)
+            
+            # Extract chunks
+            chunk1 = array1[row_start:row_end, col_start:col_end]
+            chunk2 = array2[row_start:row_end, col_start:col_end]
+            
+            # Perform element-wise multiplication
+            result_array[row_start:row_end, col_start:col_end] = chunk1 * chunk2
+    
+    return result_array

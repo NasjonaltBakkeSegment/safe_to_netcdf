@@ -10,10 +10,10 @@ import shapely.wkt
 
 try:
     from lib.utils import xml_read
-    import config.constants as cst # TODO: Replace
+    import config.constants as cst 
 except:
     from utils import xml_read
-    import config.constants as cst # TODO: Replace
+    import config.constants as cst
 
 try:
     from lib.safe.safe_base import SAFEFile
@@ -189,7 +189,7 @@ class S2SAFEFile(SAFEFile):
 
         # View angles
         counter_angle = 0
-        for BANDID in np.array(list(cst.s2_bands_order.keys())): # TODO: Replace
+        for BANDID in np.array(list(cst.s2_bands_order.keys())):
             tmp_view_zenith = np.zeros((angle_len, angle_len), dtype=np.float32)
             tmp_view_azimuth = np.zeros((angle_len, angle_len), dtype=np.float32)
             tmp_view_zenith[:] = np.nan
@@ -279,6 +279,3 @@ class S2SAFEFile(SAFEFile):
             self.globalAttribs['orbit_number'] = int(self.root.find('.//safe:orbitNumber', namespaces=self.root.nsmap).text)
 
         super()._compute_bounding_box(polygon)
-
-    # TODO: Function to extract thumbnail?
-    # TODO: Function to create quicklooks?

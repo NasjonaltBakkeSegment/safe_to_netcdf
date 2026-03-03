@@ -9,9 +9,9 @@ import sys
 import shapely.wkt, shapely.ops
 
 try:
-    from lib.utils import xml_read
+    from lib.utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
 except:
-    from utils import xml_read
+    from utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
 
 try:
     from lib.safe.safe_base import SAFEFile
@@ -338,14 +338,16 @@ class S1SAFEFile(SAFEFile):
 
         xi = list(range(0, xsize))
         yi = list(range(0, ysize))
-        tck = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
-        latitude = tck(yi, xi)
-        tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
-        longitude = tck(yi, xi)
+
+        latitude = chunked_interpolation(
+            y, x, lat.reshape(len(y), len(x)), yi, xi, chunk_size=1000, overlap=10
+        )
+        longitude = chunked_interpolation(
+            y, x, lon.reshape(len(y), len(x)), yi, xi, chunk_size=1000, overlap=10
+        )
 
         del lat
         del lon
-        del tck
 
         return latitude, longitude
 
@@ -580,8 +582,6 @@ class S1SAFEFile(SAFEFile):
             polarisation -- polarisation of rasterband
             subswath_flag -- flags for subswath
         """
-        print('DIC HERE')
-        print(self.productMetadataList)
 
         swathMergeList = self.productMetadataList[polarisation]['swathMergeList']
 
@@ -683,6 +683,7 @@ class S1SAFEFile(SAFEFile):
         swathList = self.readSwathList(noiseAzimuthAndRangeVectorList)
         t0 = dt.datetime.strptime(imageAnnotation['productFirstLineUtcTime'], '%Y-%m-%dT%H:%M:%S.%f')
         delta_ts = float(imageAnnotation['azimuthTimeInterval'])  # [s]
+        # TODO: Too much memory here even? Memory mapped array?
         noiseAzimuthMatrix = np.zeros((self.ySize, self.xSize))
         noiseRangeMatrix = np.zeros((self.ySize, self.xSize))
 
@@ -801,7 +802,9 @@ class S1SAFEFile(SAFEFile):
                     noiseRangeMatrix[lineIndex[0]:lineIndex[-1] + 1,
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 
-        noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
+        chunk_size = 100
+        noiseCorrectionMatrix_ = multiply_2d_arrays_in_chunks(noiseRangeMatrix, noiseAzimuthMatrix, chunk_size)
+        #noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
         delta = dt.datetime.now(dt.timezone.utc) - t0_duration
         logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
@@ -829,7 +832,3 @@ class S1SAFEFile(SAFEFile):
         polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
 
         super()._compute_bounding_box(polygon)
-
-
-    # TODO: Function to extract thumbnail?
-    # TODO: Function to create quicklooks?
