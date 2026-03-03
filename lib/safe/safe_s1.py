@@ -529,9 +529,10 @@ class S1SAFEFile(SAFEFile):
         nb_lines = (lines == 0).sum()
         calibration_table = cal_table.reshape(nb_pixels, nb_lines)
         try:
-            tck = interpolate.RectBivariateSpline(lines[0::nb_lines], pixels[0:nb_lines],
-                                              calibration_table)
-            lutOut = tck(y, x)
+            lutOut = chunked_interpolation(
+                lines[0::nb_lines], pixels[0:nb_lines], calibration_table, y, x, chunk_size=1000, overlap=10
+            )
+
         # For non-monotonous data. Keep RectBivariateSpline for simpler cases as way faster.
         except ValueError:
             tck = interpolate.interp2d(lines[0::nb_lines], pixels[0:nb_lines], calibration_table.T)
