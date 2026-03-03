@@ -92,7 +92,7 @@ class S2SAFEFile(SAFEFile):
 
     def set_gdal_object(self):
         if not self.dterrengdata:
-            gdalFile = self.SAFE_dir / str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)]).lstrip("/")
+            gdalFile = str(self.SAFE_dir / str(self.xmlFiles['S2_{}_Product_Metadata'.format(self.processing_level)]).lstrip("/"))
         else:
             gdalFile = str(self.mainXML)
         self.src = gdal.Open(gdalFile)

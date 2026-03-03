@@ -196,7 +196,7 @@ class S2NetCDFFile(NetCDFFile):
             logger.debug((k, v))
             varName, longName = v.split(',')
             imageFile = safe_file.SAFE_dir / str(safe_file.imageFiles[k]).lstrip("/")
-            SourceDS = gdal.Open(imageFile, gdal.GA_ReadOnly)
+            SourceDS = gdal.Open(str(imageFile), gdal.GA_ReadOnly)
             nb_rasterBands =  SourceDS.RasterCount
 
             if SourceDS.RasterCount > 1:
