@@ -114,9 +114,13 @@ S2:
     standard_name: 'cloud_area_fraction'
     long_name: 'Integrated percentage cloud cover for all pixel values.'
 S3:
+  lat:
+    coverage_content_type: 'coordinate'
+  lon:
+    coverage_content_type: 'coordinate'
   altitude:
     standard_name: 'altitude'
-    coverage_content_type: 'auxiliaryInformation'
+    coverage_content_type: 'coordinate'
     positive: 'up'
   _radiance:
     coverage_content_type: 'physicalMeasurement'

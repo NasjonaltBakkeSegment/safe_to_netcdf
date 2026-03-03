@@ -92,6 +92,8 @@ class S3NetCDFFile():
     
     def write_global_attributes(self, global_attributes):
         self.ds.attrs.update(global_attributes)
+
+        self.ds.attrs.pop('netCDF_version', None)
     
     def write_variable_attributes(self, variable_attributes):
 
