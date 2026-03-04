@@ -743,7 +743,7 @@ class S1SAFEFile(SAFEFile):
                         else:
                             noiseAzimuthVector_ = np.zeros(1)
                             noiseAzimuthVector_[:] = noiseAzimuthLUT[0]
-                        
+
                         noiseAzimuthMatrix[firstAzimuthLine:lastAzimuthLine + 1,
                         firstRangeSample:lastRangeSample + 1] = np.tile(noiseAzimuthVector_,
                                                                         (numberOfSamples, 1)).T
@@ -805,7 +805,7 @@ class S1SAFEFile(SAFEFile):
 
         chunk_size = 100
         noiseCorrectionMatrix_ = multiply_2d_arrays_in_chunks(noiseRangeMatrix, noiseAzimuthMatrix, chunk_size)
-        #noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
+
         delta = dt.datetime.now(dt.timezone.utc) - t0_duration
         logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
