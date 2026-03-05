@@ -1,7 +1,7 @@
 import numpy as np
 import datetime as dt
 try:
-    from lib.netcdf.netcdf_base import NetCDFFile
+    from transform_lib.netcdf.netcdf_base import NetCDFFile
 except ModuleNotFoundError:
     from netcdf_base import NetCDFFile
 

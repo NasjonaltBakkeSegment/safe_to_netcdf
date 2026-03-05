@@ -9,12 +9,12 @@ import sys
 import shapely.wkt, shapely.ops
 
 try:
-    from lib.utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
+    from transform_lib.utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
 except:
     from utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
 
 try:
-    from lib.safe.safe_base import SAFEFile
+    from transform_lib.safe.safe_base import SAFEFile
 except ModuleNotFoundError:
     from safe_base import SAFEFile
 

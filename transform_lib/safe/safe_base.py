@@ -4,7 +4,7 @@ from collections import defaultdict
 import logging
 
 try:
-    from lib.utils import xml_read
+    from transform_lib.utils import xml_read
 except:
     from utils import xml_read
 

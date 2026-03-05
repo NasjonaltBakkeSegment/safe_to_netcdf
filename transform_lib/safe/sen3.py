@@ -8,12 +8,12 @@ import rasterio
 import numpy as np
 
 try:
-    from lib.utils import xml_read
+    from transform_lib.utils import xml_read
 except:
     from utils import xml_read
 
 try:
-    from lib.safe.safe_base import SAFEFile
+    from transform_lib.safe.safe_base import SAFEFile
 except ModuleNotFoundError:
     from safe_base import SAFEFile
 

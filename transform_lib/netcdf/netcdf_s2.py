@@ -5,9 +5,9 @@ import scipy.ndimage
 import netCDF4
 from osgeo import gdal
 
-from lib.utils import get_key
+from transform_lib.utils import get_key
 import config.constants as cst
-from lib.netcdf.netcdf_base import NetCDFFile
+from transform_lib.netcdf.netcdf_base import NetCDFFile
 
 logger = logging.getLogger(__name__)
 

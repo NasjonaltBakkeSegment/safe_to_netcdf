@@ -3,13 +3,13 @@ import psutil
 import logging
 import argparse
 from pathlib import Path
-from lib.safe.safe_s1 import S1SAFEFile
-from lib.safe.safe_s2 import S2SAFEFile
-from lib.safe.sen3 import SEN3File
-from lib.netcdf.netcdf_s1 import S1NetCDFFile
-from lib.netcdf.netcdf_s2 import S2NetCDFFile
-from lib.netcdf.netcdf_s3 import S3NetCDFFile
-from lib.utils import load_variable_attributes, load_global_attributes, update_global_attributes
+from transform_lib.safe.safe_s1 import S1SAFEFile
+from transform_lib.safe.safe_s2 import S2SAFEFile
+from transform_lib.safe.sen3 import SEN3File
+from transform_lib.netcdf.netcdf_s1 import S1NetCDFFile
+from transform_lib.netcdf.netcdf_s2 import S2NetCDFFile
+from transform_lib.netcdf.netcdf_s3 import S3NetCDFFile
+from transform_lib.utils import load_variable_attributes, load_global_attributes, update_global_attributes
 
 # Configure logging with timestamps
 logging.basicConfig(
@@ -87,8 +87,8 @@ def transform(
 
     if mission in ['S1', 'S2']:
         logger.info("Initializing NetCDF file.")
-        netcdf_file.initialise()    
-        
+        netcdf_file.initialise()
+
         logger.info("Creating NetCDF dimensions.")
         netcdf_file.create_dimensions(safe_file)
 
@@ -167,7 +167,7 @@ def transform(
 
         logger.info('Adding integrated information as variables')
         netcdf_file.add_integrated_information_as_variables(safe_file)
-    
+
     elif mission == 'S3':
         #! Currently only works for OLCI L1
         netcdf_file.concatenate_bands(safe_file.bands)
@@ -181,13 +181,13 @@ def transform(
 
     logger.info("Writing global attributes to NetCDF.")
     global_attributes = load_global_attributes(global_attributes_config, product_name)
-    
+
     if mission in ['S1', 'S2']:
         logger.info("Retrieving global attributes from SAFEFile.")
         safe_file.get_global_attributes()
-    
+
         global_attributes = global_attributes | safe_file.globalAttribs
-    
+
     if product_id:
         global_attributes['id'] = product_id
 
@@ -195,7 +195,7 @@ def transform(
         global_attributes = update_global_attributes(global_attributes)
     elif mission in ['S3']:
         netcdf_file.compute_bounding_box()
-    
+
     netcdf_file.write_global_attributes(global_attributes)
 
     if mission in ['S3']:

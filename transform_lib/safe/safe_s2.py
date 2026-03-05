@@ -9,14 +9,14 @@ import pyproj
 import shapely.wkt
 
 try:
-    from lib.utils import xml_read
+    from transform_lib.utils import xml_read
     import config.constants as cst 
 except:
     from utils import xml_read
     import config.constants as cst
 
 try:
-    from lib.safe.safe_base import SAFEFile
+    from transform_lib.safe.safe_base import SAFEFile
 except ModuleNotFoundError:
     from safe_base import SAFEFile
 
