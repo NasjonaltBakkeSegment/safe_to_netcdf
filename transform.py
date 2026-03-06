@@ -169,7 +169,7 @@ def transform(
         netcdf_file.add_integrated_information_as_variables(safe_file)
 
     elif mission == 'S3':
-        #! Currently only works for OLCI L1
+        #! Currently only works for OLCI L1 and L2
         netcdf_file.concatenate_bands(safe_file.bands)
 
         netcdf_file.add_time_dimension(safe_file.time_file)
@@ -249,7 +249,3 @@ if __name__ == "__main__":
         product_id=args.product_id,
         target=args.target,
     )
-
-# TODO: Develop S3 OLCI
-# TODO: Check memory usage to see how many can run in parallel
-# TODO: Check how to execute it from wrapper
