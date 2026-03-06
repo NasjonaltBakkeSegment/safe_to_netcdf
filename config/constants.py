@@ -4,43 +4,6 @@
 Constants describing Sentinel satellites
 '''
 
-# ------------- All Sentinels -------------
-
-global_attributes = {
-     'project': 'Norwegian National Ground Segment for Satellite Data',
-     'institution': 'Norwegian Meteorological Institute (METNO)',
-     'source': 'surface observation',
-     'license': 'Freely Distributed',
-     'acknowledgement': 'Copernicus EU',
-     'creator_type': 'institution',
-     'creator_institution': 'Norwegian Meteorological Institute',
-     'creator_name': 'NBS Helpdesk',
-     'creator_email': 'nbs-helpdesk@met.no',
-     'creator_url': 'https://met.no',
-     'publisher_name': 'NBS Helpdesk',
-     'publisher_email': 'nbs-helpdesk@met.no',
-     'publisher_url': 'https://met.no'
-}
-
-# ------------- Sentinel 3 -------------
-
-s3_olci_attributes = {
-    'Conventions': 'CF-1.7, ACDD-1.3',
-    'naming_authority': 'EUMETSAT, ESA: Sentinel 3 PDGS, File Naming Convention',
-    'reference': 'https://sentinel.esa.int/web/sentinel/user-guides/sentinel-3-olci',
-    'standard_name_vocabulary': 'CF Standard Name Table v69',
-    'comment': 'This product contains selected information from Copernicus Sentinel-3 '
-               'OLCI product. To obtain all data, please refer to the SAFE format available '
-               'at colhub.met.no',
-    'title': 'Sentinel-3 OCLI product in NetCDF/CF',
-    'summary': 'Sentinel-3 Ocean and Land Color Instrument product in NetCDF/CF.',
-    'keywords_vocabulary': 'GCMD Science Keywords',
-    'keywords': [
-        'SPECTRAL/ENGINEERING > INFRARED WAVELENGTHS > REFLECTED INFRARED',
-        'SPECTRAL/ENGINEERING > VISIBLE WAVELENGTHS > VISIBLE RADIANCE'
-    ]
-}
-
 # ------------- Sentinel 2 -------------
 
 s2_attributes = {

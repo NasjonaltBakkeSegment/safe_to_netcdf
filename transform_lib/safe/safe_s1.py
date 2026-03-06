@@ -1,64 +1,39 @@
-#!/usr/bin/python3
-
-# Name:          Sentinel1_reader_and_NetCDF_converter.py
-# Purpose:       Read Sentinel-1 data from ESA SAFE and convert to
-#                to netCDF
-# Author(s):     Trygve Halsne
-# Created:
-# Modifications:
-# Copyright:     (c) Norwegian Meteorological Institute, 2018
-#
-# Need to use gdal 2.1.1-> to have support of the SAFE reader
-
-import sys
+from osgeo import gdal
+import shutil
 from collections import defaultdict
-import netCDF4
-import numpy as np
-import pathlib
-from scipy import interpolate
-import datetime as dt
-import utils as utils
 import logging
+from scipy import interpolate
+import numpy as np
+import datetime as dt
+import sys
+import shapely.wkt, shapely.ops
 
+try:
+    from transform_lib.utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
+except:
+    from utils import xml_read, chunked_interpolation, multiply_2d_arrays_in_chunks
+
+try:
+    from transform_lib.safe.safe_base import SAFEFile
+except ModuleNotFoundError:
+    from safe_base import SAFEFile
 
 logger = logging.getLogger(__name__)
 
-
-class Sentinel1_reader_and_NetCDF_converter:
+class S1SAFEFile(SAFEFile):
     """
-        Class for reading Sentinel-1 products from SAFE with methods for
-        creating variables for calibration, noise correction etc. In addition,
-        it is possible to convert product into NetCDF4/CF (1.6).
-
-        The implemented methods uses standard python libraries as
-        gdal(v. > 2.1.1), numpy, lxml etc.
-
-        Keyword arguments:
-        SAFE_file -- absolute path to zipped file
-        SAFE_outpath -- output storage location for unzipped SAFE product
+    Subclass for working with Sentinel-1 SAFE files
     """
 
-    def __init__(self, product, indir, outdir, colhub_uuid=None):
-        self.uuid = colhub_uuid
-        self.product_id = product
-        file_path = indir / (product + '.zip')
-        print(file_path)
-        if file_path.exists():
-            self.input_zip = file_path
-        else:
-            file_path_safe = indir / (product + '.SAFE.zip')
-            if file_path_safe.exists():
-                self.input_zip = file_path_safe
-        self.SAFE_dir = (outdir / self.product_id).with_suffix('.SAFE')
+    def __init__(self, product, zipdir, tmpdir):
+
+        super().__init__(product, zipdir, tmpdir)
+
+        self.SAFE_dir = (tmpdir / self.product_name).with_suffix('.SAFE')
         self.gcps = []  # GCPs from gdal used for generation of lat lon
         self.polarisation = []
         self.xSize = None
         self.ySize = None
-        self.xmlFiles = defaultdict(list)
-        self.globalAttribs = {}
-        self.src = None
-        self.t0 = dt.datetime.now(dt.timezone.utc)
-        self.ncout = None  # NetCDF output file
         self.xmlCalPixelLines = defaultdict(list)
         self.xmlCalLUTs = defaultdict(list)
         self.xmlGCPs = defaultdict(list)
@@ -66,31 +41,91 @@ class Sentinel1_reader_and_NetCDF_converter:
         self.noiseVectors = defaultdict(list)
         self.productMetadata = defaultdict(dict)  # list of values from image annotation files
         self.productMetadataList = defaultdict(dict)  # list of lists from image annotation files
-        self.read_ok = True
-        self.main()
+        self.mainXML = self.SAFE_dir / 'manifest.safe'
 
-    def main(self):
-        """ Main method for traversing and reading key parameters from SAFE
-            directory.
+    def prepare_for_use(self):
         """
+        Prepare the SAFEFile instance for use.
+        """
+        super().prepare_for_use()
 
-        # 1) Fetch manifest.xml file
-        utils.uncompress(self)
+        self.create_file_lists()
+        self.set_gdal_object()
+        self.initialize_s1_metadata()
+        self.get_metadata()
+        self.gcps = self.src.GetGCPs()
 
-        # 2) Set some of the gloal parameters
-        utils.initializer(self)
+    def delete_uncompressed_folder(self):
+        """
+        Delete the uncompressed SAFE folder and its contents.
+        """
+        if self.SAFE_dir.is_dir():
+            try:
+                logger.debug(f"Deleting uncompressed folder: {self.SAFE_dir}")
+                shutil.rmtree(self.SAFE_dir)
+                logger.debug("Uncompressed folder deleted successfully.")
+            except Exception as e:
+                logger.error(f"Error deleting uncompressed folder: {e}")
+                raise
+        else:
+            logger.debug(f"Uncompressed folder does not exist: {self.SAFE_dir}")
 
-        gcps_ok = self.getGCPs()
+    def create_file_lists(self):
+        """
+        Create lists of XML/GML and image files included in the SAFE product.
+        """
+        # Parse the metadata XML tree to identify files
+        dataObjectSection = self.root.find('./dataObjectSection')
+        for dataObject in dataObjectSection.findall('./'):
+            repID = dataObject.attrib.get('repID')
+            ftype = None
+            href = None
+            for element in dataObject.iter():
+                attrib = element.attrib
+                if 'mimeType' in attrib:
+                    ftype = attrib['mimeType']
+                if 'href' in attrib:
+                    href = attrib['href'][1:]
+            if ftype == 'text/xml' and href:
+                self.xmlFiles[repID].append(self.SAFE_dir / href[1:])
+
+    def set_gdal_object(self):
+        gdalFile = str(self.mainXML)
+        self.src = gdal.Open(gdalFile)
+        if self.src is None:
+            raise
+        logger.debug((self.src))
+
+        self.globalAttribs = self.src.GetMetadata()
+
+        # Set raster size parameters
+        self.xSize = self.src.RasterXSize
+        self.ySize = self.src.RasterYSize
+        # Set polarisation parameters
+        polarisations = self.root.findall('.//s1sarl1:transmitterReceiverPolarisation',
+                                     namespaces=self.root.nsmap)
+        outattrib = ''
+        for polarisation in polarisations:
+            self.polarisation.append(polarisation.text)
+            outattrib += polarisation.text
+        self.globalAttribs['polarisation'] = [outattrib]
+        # Timeliness
+        self.globalAttribs['ProductTimelinessCategory'] = self.root.find(
+            './/s1sarl1:productTimelinessCategory', namespaces=self.root.nsmap).text
+
+    def initialize_s1_metadata(self):
+        '''
+        Initialize Sentinel-1 metadata, including calibration tables, noise vectors,
+        and GCP (Ground Control Point) parameters.
+        '''
 
         # Calibration tables
         calibrationTables = ['sigmaNought', 'betaNought', 'gamma', 'dn']
         for calXmlFile in self.xmlFiles['s1Level1CalibrationSchema']:
-            #calibrationXmlFile = self.SAFE_dir / calXmlFile
-
             # Retrieve pixels and lines
             polarisation, cal_pixels, cal_lines = self.readPixelsLines(calXmlFile)
             self.xmlCalPixelLines[polarisation] = [np.array(cal_pixels, np.int16),
-                                                   np.array(cal_lines, np.int16)]
+                                                np.array(cal_lines, np.int16)]
 
             # Retrieve Look Up Tables
             for ct in calibrationTables:
@@ -103,17 +138,17 @@ class Sentinel1_reader_and_NetCDF_converter:
 
         # Retrieve GCP parameters
         gcp_parameters = ['azimuthTime', 'slantRangeTime', 'line', 'pixel',
-                          'latitude', 'longitude', 'height', 'incidenceAngle', 'elevationAngle']
+                        'latitude', 'longitude', 'height', 'incidenceAngle', 'elevationAngle']
         for xmlFile in self.xmlFiles['s1Level1ProductSchema']:
-
             for parameter in gcp_parameters:
                 polarisation, values = self.getGCPValues(xmlFile, parameter)
 
-                if not parameter == 'azimuthTime':
+                if parameter != 'azimuthTime':
                     self.xmlGCPs[str(parameter + '_' + polarisation)] = np.array(values, np.float32)
                 else:
                     self.xmlGCPs[str(parameter + '_' + polarisation)] = np.array(values, str)
 
+    def get_metadata(self):
         # retrieve product metadata from image annotation files
         productMetadata_parameters = [
             'missionId', 'productType', 'polarisation', 'mode', 'startTime',
@@ -153,7 +188,8 @@ class Sentinel1_reader_and_NetCDF_converter:
             'coordinateConversionList', 'swathMergeList']
 
         for xmlFile in self.xmlFiles['s1Level1ProductSchema']:
-            root = utils.xml_read(xmlFile)
+
+            root = xml_read(xmlFile)
             polarisation = root.find('.//polarisation').text
 
             for pm in productMetadata_parameters:
@@ -162,9 +198,9 @@ class Sentinel1_reader_and_NetCDF_converter:
 
             for pml in productMetadataList_parameters:
                 variable = root.find(str('.//' + pml))
-                self.extractProductMetadataList(variable, polarisation)
+                self._extractProductMetadataList(variable, polarisation)
 
-    def extractProductMetadataList(self, mother_element, polarisation):
+    def _extractProductMetadataList(self, mother_element, polarisation):
         """ Write the input mother_element from the product xml annotation file
             to the extractProductMetadataList variable.
 
@@ -276,273 +312,44 @@ class Sentinel1_reader_and_NetCDF_converter:
         else:
             logger.error("Extraction of %s is not implemented" % listType)
 
-    def getGCPs(self):
-        """ Get product GCPs utilizing gdal """
-        if self.src:
-            self.gcps = self.src.GetGCPs()
-            return True
-        else:
-            return False
+    def genLatLon_regGrid(self):
+        """Generate latitude and longitude arrays from GCPs."""
+        # Extract GCPs to vector arrays
+        gcps = self.gcps
+        xsize = self.xSize
+        ysize = self.ySize
 
-    def write_to_NetCDF(self, nc_outpath, compression_level, chunk_size=(1, 91, 99)):
-        """ Method intitializing output NetCDF product.
+        x = []
+        y = []
+        lon = []
+        lat = []
 
-        Keyword arguments:
-        nc_outpath -- output path where NetCDF file should be stored
-        compression_level -- compression level on output NetCDF file (1-9)
-        """
+        for gcp in gcps:
+            if gcp.GCPPixel == 0:
+                y.append(gcp.GCPLine)
+            if gcp.GCPLine == 0:
+                x.append(gcp.GCPPixel)
+            lon.append(gcp.GCPX)
+            lat.append(gcp.GCPY)
+        x = np.array(x, np.int32)
+        y = np.array(y, np.int32)
+        lat = np.array(lat, np.float32)
+        lon = np.array(lon, np.float32)
 
-        logger.info("------------START CONVERSION FROM SAFE TO NETCDF-------------")
+        xi = list(range(0, xsize))
+        yi = list(range(0, ysize))
 
-        # Status
-        utils.memory_use(self.t0)
-
-        out_netcdf = (nc_outpath / self.product_id).with_suffix('.nc')
-        ncout = netCDF4.Dataset(out_netcdf, 'w', format='NETCDF4')
-        ncout.createDimension('time', 1)
-        ncout.createDimension('x', self.xSize)
-        ncout.createDimension('y', self.ySize)
-
-        # Set time value
-        utils.create_time(ncout, self.globalAttribs["ACQUISITION_START_TIME"])
-
-        nclat = ncout.createVariable('lat', 'f4', ('y', 'x',), zlib=True,
-                                     complevel=compression_level, chunksizes=chunk_size[1:])
-        nclon = ncout.createVariable('lon', 'f4', ('y', 'x',), zlib=True,
-                                     complevel=compression_level, chunksizes=chunk_size[1:])
-
-        # Add latitude and longitude layers
-        ##########################################################
-        # Status
-        utils.memory_use(self.t0)
-
-        lat, lon = self.genLatLon_regGrid()  # Assume gcps are on a regular grid
-        nclat.long_name = 'latitude'
-        nclat.units = 'degrees_north'
-        nclat.standard_name = 'latitude'
-        nclat[:, :] = lat
+        latitude = chunked_interpolation(
+            y, x, lat.reshape(len(y), len(x)), yi, xi, chunk_size=1000, overlap=10
+        )
+        longitude = chunked_interpolation(
+            y, x, lon.reshape(len(y), len(x)), yi, xi, chunk_size=1000, overlap=10
+        )
 
         del lat
-
-        nclon.long_name = 'longitude'
-        nclon.units = 'degrees_east'
-        nclon.standard_name = 'longitude'
-        nclon[:, :] = lon
-
         del lon
 
-        # Add raw measurement layers
-        ##########################################################
-        # Status
-        utils.memory_use(self.t0)
-
-        for i in range(1, self.src.RasterCount + 1):
-            band = self.src.GetRasterBand(i)
-            band_metadata = band.GetMetadata()
-            try:
-                varName = 'Amplitude_%s' % band_metadata['POLARISATION']
-            except:
-                varName = 'Amplitude_%s' % band_metadata['POLARIZATION']
-            var = ncout.createVariable(varName, 'u2', ('time', 'y', 'x',),
-                                       fill_value=0, zlib=True, complevel=compression_level,
-                                       chunksizes=chunk_size)
-            try:
-                var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARIZATION']
-            except:
-                var.long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
-            var.units = "1"
-            var.coordinates = "lat lon"
-            var.grid_mapping = "crsWGS84"
-            var.standard_name = "surface_backwards_scattering_coefficient_of_radar_wave"
-            try:
-                var.polarisation = "%s" % band_metadata['POLARIZATION']
-            except:
-                var.polarisation = "%s" % band_metadata['POLARISATION']
-            logger.debug((band.GetVirtualMemArray().shape))
-            var[0, :, :] = band.GetVirtualMemArray()
-
-            band = None
-
-        # set grid mapping(?)
-        ##########################################################
-        nc_crs = ncout.createVariable('crsWGS84', np.int32)
-        nc_crs.grid_mapping_name = "latitude_longitude"
-        nc_crs.semi_major_axis = "6378137"
-        nc_crs.inverse_flattening = "298.2572235604902"
-
-        # Add calibration layers
-        ##########################################################
-        # Status
-        logger.info('Adding calibration layers')
-        utils.memory_use(self.t0)
-
-        for calibration in self.xmlCalLUTs:
-            current_polarisation = calibration.split('_')[-1]
-            pixels, lines = self.xmlCalPixelLines[current_polarisation]
-            calibration_LUT = self.xmlCalLUTs[calibration]
-            resampled_calibration = self.getCalLayer(pixels, lines, calibration_LUT)
-
-            var = ncout.createVariable(str(calibration), 'f4', ('time', 'y', 'x',),
-                                       zlib=True, complevel=compression_level,
-                                       chunksizes=chunk_size)
-            var.long_name = '%s calibration table' % calibration
-            var.units = "1"
-            var.coordinates = "lat lon"
-            var.grid_mapping = "crsWGS84"
-            var.polarisation = "%s" % current_polarisation
-            var[0, :, :] = resampled_calibration
-
-            del resampled_calibration
-
-        # Add noise layers
-        ##########################################################
-        # Status
-        logger.info('Adding noise layers')
-        utils.memory_use(self.t0)
-
-        for polarisation in self.polarisation:
-            noiseCorrectionMatrix = self.getNoiseCorrectionMatrix(self.noiseVectors[polarisation],
-                                                                  polarisation)
-
-            var = ncout.createVariable(str('noiseCorrectionMatrix_' + polarisation), 'f4',
-                                       ('time', 'y', 'x',),
-                                       zlib=True, complevel=compression_level,
-                                       chunksizes=chunk_size)
-            var.long_name = 'Thermal noise correction vector power values.'
-            var.units = "1"
-            var.coordinates = "lat lon"
-            var.grid_mapping = "crsWGS84"
-            var.polarisation = "%s" % polarisation
-            var[0, :, :] = noiseCorrectionMatrix
-
-            del noiseCorrectionMatrix
-
-        # Add subswath layers
-        ##########################################################
-        # Status
-        logger.info('Adding subswath layers')
-        utils.memory_use(self.t0)
-
-        for polarisation in self.polarisation:
-            swathLayer, flags = self.getSwathList(polarisation)
-            flag_values = np.array(sorted(flags.values()), dtype=np.int8)
-            flags_meanings = ""
-            for key in sorted(flags.keys()):
-                flags_meanings += str(key + ' ')
-
-            swathList = ncout.createVariable('swathList', 'i1', ('y', 'x',), fill_value=0,
-                                             zlib=True, complevel=7, chunksizes=chunk_size[1:])
-            swathList.long_name = 'Subswath List'
-            swathList.flag_values = flag_values
-            swathList.valid_range = np.array([flag_values.min(), flag_values.max()])
-            swathList.flag_meanings = flags_meanings.strip()
-            swathList.standard_name = "status_flag"
-            swathList.units = "1"
-            swathList.coordinates = "lat lon"
-            swathList.grid_mapping = "crsWGS84"
-            # swathList.polarisation = "%s" %  polarisation
-            swathList[:] = swathLayer
-            break
-
-        # Add GCP information
-        ##########################################################
-        # Status
-        logger.info('Adding GCP information')
-        utils.memory_use(self.t0)
-
-        gcp_units = {'slantRangeTime': 's', 'latitude': 'degrees', 'longitude': 'degrees',
-                     'height': 'm', 'incidenceAngle': 'degrees', 'elevationAngle': 'degrees'}
-        gcp_long_name = {
-            'azimuthTime': 'Zero Doppler azimuth time to which grid point applies [UTC].',
-            'slantRangeTime': 'Two way slant range time to grid point.',
-            'line': 'Reference image MDS line to which this geolocation grid point applies.',
-            'pixel': 'Reference image MDS sample to which this geolocation grid point applies',
-            'latitude': 'Geodetic latitude of grid point.',
-            'longitude': 'Geodetic longitude of grid point.',
-            'height': 'Height of the grid point above sea level.',
-            'incidenceAngle': 'Incidence angle to grid point.',
-            'elevationAngle': 'Elevation angle to grid point.'}
-        ncout.createDimension('gcp_index', len(self.gcps))
-        for key, value in self.xmlGCPs.items():
-            current_variable = key.split('_')[0]
-            if current_variable == 'azimuthTime':
-                var = ncout.createVariable(str('GCP_%s' % key), 'f4', ('gcp_index'), zlib=True)
-                dates = np.array([dt.datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%f') for t in value])
-                ref_date = dates.min()
-                value = np.array([td.total_seconds() for td in dates - ref_date])
-                var.units = 's'
-                var.long_name = gcp_long_name[current_variable]
-                var.comment = 'Seconds since %s' % ref_date.strftime('%Y-%m-%dT%H:%M:%S.%f')
-            else:
-                var = ncout.createVariable(str('GCP_%s' % key), value.dtype, ('gcp_index'),
-                                           zlib=True)
-                if current_variable in gcp_units:
-                    var.units = gcp_units[current_variable]
-                var.long_name = gcp_long_name[current_variable]
-            var[:] = value
-
-        # Add product annotation metadata
-        ##########################################################
-        # Status
-        logger.info('Adding annotation information')
-        utils.memory_use(self.t0)
-
-        for polarisation in self.productMetadata:
-            varBaseName = str('s1Level1ProductSchema_' + polarisation)
-            productMetadata = self.productMetadata[polarisation]
-            var = ncout.createVariable(varBaseName, 'i1')
-            var.setncatts(productMetadata)
-
-        # Add product annotation metadata lists
-        ##########################################################
-        # Status
-        logger.info('Adding annotation list information')
-        utils.memory_use(self.t0)
-
-        productMetadataListComment = {
-            'swathMergeList': 'index:{swath:[firstAzimuthLine, firstRangeSample, lastAzimuthLine, '
-                              'lastRangeSample, azimuthTime]}',
-            'orbitList': 'time:[frame, position (x,y,z), velocity (x,y,z)]',
-            'coordinateConversionList': 'index:[azimuthTime, slantRangeTime, sr0, '
-                                        'srgrCoefficients, gr0, grsrCoefficients ]',
-            'antennaPatternList': 'index:[swath, azimuthTime, slantRangeTime, elevationAngle, '
-                                  'elevationPattern, incidenceAngle, terrainHeight, roll]'
-            }
-        productMetadataListUnits = {
-            'swathMergeList': 'index: , firstAzimuthLine: , firstRangeSample: , lastAzimuthLine: '
-                              ', lastRangeSample: , azimuthTime: datetime'}
-        productMetadataListDatatype = {
-            'swathMergeList': 'index:uint16 , firstAzimuthLine:unit32 , firstRangeSample:unit32 , '
-                              'lastAzimuthLine:uint32 , lastRangeSample:uint32 , azimuthTime: UTC'}
-
-        for polarisation in self.productMetadataList:
-            for subkey in self.productMetadataList[polarisation]:
-                varBaseName = str(subkey + '_' + polarisation)
-                if True:
-                    productMetadataList = self.productMetadataList[polarisation][subkey]
-                    tmp_dict = {}
-                    for k, v in productMetadataList.items():
-                        tmp_dict[str(k)] = str(v)
-                    var = ncout.createVariable(varBaseName, 'i1')
-                    var.comment = productMetadataListComment[subkey]
-                    var.setncatts(tmp_dict)
-
-        # Add global attributes
-        ##########################################################
-        # Status
-        logger.info('Adding global attributes')
-        utils.memory_use(self.t0)
-
-        utils.get_global_attributes(self)
-        ncout.setncatts(self.globalAttribs)
-        ncout.sync()
-
-        # Status
-        ncout.close()
-        logger.info('Finished.')
-        utils.memory_use(self.t0)
-
-        return out_netcdf.is_file()
+        return latitude, longitude
 
     def readNoiseData(self, xmlfile):
         """ Method for reading noise data from Sentinel-1 annotation files.
@@ -580,7 +387,8 @@ class Sentinel1_reader_and_NetCDF_converter:
                 values: noiseRangeVectorList, noiseAzimuthVectorList
         """
 
-        root = utils.xml_read(xmlfile)
+        root = xml_read(xmlfile)
+
         polarisation = root.find('.//polarisation').text
 
         # Noise in range direction
@@ -608,7 +416,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                          'radarFrequency', 'linesPerBurst',
                          'azimuthTimeInterval', 'productFirstLineUtcTime']
         for LAD in self.xmlFiles['s1Level1ProductSchema']:
-            lad_root = utils.xml_read(LAD)
+            lad_root = xml_read(LAD)
             lad_polarisation = lad_root.find('.//polarisation').text
             if lad_polarisation == polarisation:
                 for lad_var in LAD_variables:
@@ -667,7 +475,7 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def readPixelsLines(self, xmlfile):
 
-        root = utils.xml_read(xmlfile)
+        root = xml_read(xmlfile)
         polarisation = root.find('.//polarisation').text
 
         # Get pixels where we have calibration values. Assume regular distripution over all image
@@ -698,7 +506,8 @@ class Sentinel1_reader_and_NetCDF_converter:
         return (polarisation, pixels, lines)
 
     def getCalTable(self, xmlfile, tName):
-        root = utils.xml_read(xmlfile)
+
+        root = xml_read(xmlfile)
 
         # Get calibration values
         cal = []
@@ -720,9 +529,10 @@ class Sentinel1_reader_and_NetCDF_converter:
         nb_lines = (lines == 0).sum()
         calibration_table = cal_table.reshape(nb_pixels, nb_lines)
         try:
-            tck = interpolate.RectBivariateSpline(lines[0::nb_lines], pixels[0:nb_lines],
-                                              calibration_table)
-            lutOut = tck(y, x)
+            lutOut = chunked_interpolation(
+                lines[0::nb_lines], pixels[0:nb_lines], calibration_table, y, x, chunk_size=1000, overlap=10
+            )
+
         # For non-monotonous data. Keep RectBivariateSpline for simpler cases as way faster.
         except ValueError:
             tck = interpolate.interp2d(lines[0::nb_lines], pixels[0:nb_lines], calibration_table.T)
@@ -732,10 +542,10 @@ class Sentinel1_reader_and_NetCDF_converter:
 
     def getGCPValues(self, xmlfile, parameter):
         """ Method for retrieving Geo Location Point parameter from xml file."""
-        root = utils.xml_read(xmlfile)
+
+        root = xml_read(xmlfile)
         polarisation = root.find('.//polarisation').text
 
-        #
         out_list = []
 
         # Get parameter values in ground control points
@@ -743,45 +553,6 @@ class Sentinel1_reader_and_NetCDF_converter:
             out_list.append(l.find(parameter).text)
 
         return polarisation, out_list
-
-    def genLatLon_regGrid(self):
-        """ Method providing latitude and longitude arrays """
-        # Extract GCPs to vector arrays
-        gcps = self.gcps
-        xsize = self.xSize
-        ysize = self.ySize
-        ngcp = len(gcps)
-        # print ngcp
-        x = []
-        y = []
-        lon = []
-        lat = []
-        idx = 0
-
-        for gcp in gcps:
-            if gcp.GCPPixel == 0:
-                y.append(gcp.GCPLine)
-            if gcp.GCPLine == 0:
-                x.append(gcp.GCPPixel)
-            lon.append(gcp.GCPX)
-            lat.append(gcp.GCPY)
-        x = np.array(x, np.int32)
-        y = np.array(y, np.int32)
-        lat = np.array(lat, np.float32)
-        lon = np.array(lon, np.float32)
-
-        xi = list(range(0, xsize))
-        yi = list(range(0, ysize))
-        tck = interpolate.RectBivariateSpline(y, x, lat.reshape(len(y), len(x)))
-        latitude = tck(yi, xi)
-        tck = interpolate.RectBivariateSpline(y, x, lon.reshape(len(y), len(x)))
-        longitude = tck(yi, xi)
-
-        del lat
-        del lon
-        del tck
-
-        return latitude, longitude
 
     def readSwathList(self, noiseVector):  # ,imageAnnotationDict):
         """ Returns dictionary with swath ID as key and number of azimuth denoising
@@ -791,7 +562,6 @@ class Sentinel1_reader_and_NetCDF_converter:
             noiseVector -- Noise vector containing range and azimuth noise
                            values retrieved from the readNoiseData method.
         """
-        noiseRangeVectorList = noiseVector['range']
         if 'azimuth' in noiseVector:
             noiseAzimuthVectorList = noiseVector['azimuth']
         else:
@@ -914,6 +684,7 @@ class Sentinel1_reader_and_NetCDF_converter:
         swathList = self.readSwathList(noiseAzimuthAndRangeVectorList)
         t0 = dt.datetime.strptime(imageAnnotation['productFirstLineUtcTime'], '%Y-%m-%dT%H:%M:%S.%f')
         delta_ts = float(imageAnnotation['azimuthTimeInterval'])  # [s]
+        # TODO: Too much memory here even? Memory mapped array?
         noiseAzimuthMatrix = np.zeros((self.ySize, self.xSize))
         noiseRangeMatrix = np.zeros((self.ySize, self.xSize))
 
@@ -972,20 +743,7 @@ class Sentinel1_reader_and_NetCDF_converter:
                         else:
                             noiseAzimuthVector_ = np.zeros(1)
                             noiseAzimuthVector_[:] = noiseAzimuthLUT[0]
-                        # print len(noiseAzimuthVector_)
-                        # plt.plot(line, noiseAzimuthLUT, 'go-', lineIndex, noiseAzimuthVector_,
-                        # '-')
-                        # plt.legend(['sub-sampled','interpolated'])
-                        # plt.show()
 
-                        # create row vector
-                        # noiseAzimuthVector_ = noiseAzimuthVector_.T
-                        # print sampleIndex
-                        # print numberOfLines
-                        # noiseAzimuthMatrix[lineIndex,sampleIndex] = np.tile(
-                        # noiseAzimuthVector_,(numberOfSamples,1))
-                        # noiseAzimuthMatrix[firstAzimuthLine:lastAzimuthLine+1,
-                        # firstRangeSample:lastRangeSample+1]=noiseAzimuthVector_
                         noiseAzimuthMatrix[firstAzimuthLine:lastAzimuthLine + 1,
                         firstRangeSample:lastRangeSample + 1] = np.tile(noiseAzimuthVector_,
                                                                         (numberOfSamples, 1)).T
@@ -1011,26 +769,17 @@ class Sentinel1_reader_and_NetCDF_converter:
                             sys.exit([1])
 
                     noiseRangeVectorList_ = np.zeros((numberOfSamples, len(validRangeVectorKeys)))
-                    # noiseRangeVectorLine_ = np.zeros((numberOfSamples,
-                    # len(validRangeVectorKeys))) #should be numberOfLines?
                     noiseRangeVectorLine_ = np.zeros((len(validRangeVectorKeys)))
 
-                    # print validRangeVectorKeys, noiseRangeVectorFirstIndex
                     for index, key in enumerate(validRangeVectorKeys):
-                        rangeRecordIndex = index + noiseRangeVectorFirstIndex
-                        rangeRecPixels_ = np.array(noiseRangeVectorList[key][1].split(),
-                                                   int)  # getNoiseRangeRecordByIndex (
-                        # rangeRecordIndex)
+                        rangeRecPixels_ = np.array(noiseRangeVectorList[key][1].split(), int)
                         rangeRecLines_ = np.array(noiseRangeVectorList[key][2].split(), float)
                         rangePixelToInterp_0 = np.argwhere(
                             rangeRecPixels_ >= firstRangeSample).min()
                         rangePixelToInterp_n = np.argwhere(rangeRecPixels_ <= lastRangeSample).max()
-                        # rangePixelToInterp = rangeRecPixels_[
-                        # rangePixelToInterp_0:rangePixelToInterp_n+1]
                         rangePixelToInterp = rangeRecPixels_[
                                              rangePixelToInterp_0:rangePixelToInterp_n + 1]
-                        # rangePixelToInterp = rangeRecPixels_[(rangeRecPixels_ >=
-                        # firstRangeSample) & (rangeRecPixels_ <= lastRangeSample)]
+
 
                         intp1_range = interpolate.interp1d(rangePixelToInterp, rangeRecLines_[
                                                                                rangePixelToInterp_0:rangePixelToInterp_n + 1],
@@ -1050,39 +799,37 @@ class Sentinel1_reader_and_NetCDF_converter:
                                                               fill_value='extrapolate')
                             noiseRangeMatrix_[i, :] = intp1_line(lineIndex)
                         else:
-                            noiseRangeMatrix_[i, :] = noiseRangeVectorList_[
-                                i]  # Not able to perform azimuth interpolation. Hence writing the same value to each line index.
-
+                            noiseRangeMatrix_[i, :] = noiseRangeVectorList_[i]
                     noiseRangeMatrix[lineIndex[0]:lineIndex[-1] + 1,
                     sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
 
-        noiseCorrectionMatrix_ = noiseRangeMatrix * noiseAzimuthMatrix
+        chunk_size = 100
+        noiseCorrectionMatrix_ = multiply_2d_arrays_in_chunks(noiseRangeMatrix, noiseAzimuthMatrix, chunk_size)
+
         delta = dt.datetime.now(dt.timezone.utc) - t0_duration
         logger.info(f"Created noise correction matrix in {str(delta)}")
         return noiseCorrectionMatrix_
 
+    def get_global_attributes(self):
 
-if __name__ == '__main__':
+        super().get_global_attributes()
 
-    # Log to console
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    log_info = logging.StreamHandler(sys.stdout)
-    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(log_info)
+        self.globalAttribs.update({
+            'orbit_number': int(self.globalAttribs.pop("ORBIT_NUMBER")),
+            'orbit_direction': self.globalAttribs.pop("ORBIT_DIRECTION").lower(),
+            'relative_orbit_number': self.root.find('.//safe:relativeOrbitNumber', namespaces=self.root.nsmap).text,
+            'time_coverage_start': self.globalAttribs.pop('ACQUISITION_START_TIME')+'Z',
+            'time_coverage_end': self.globalAttribs.pop('ACQUISITION_STOP_TIME')+'Z',
+            'mode': self.globalAttribs.pop('MODE')
+        })
+        # Some work is necessary to get the polygon:
+        # - get coordinates from manifest
+        coords = self.root.find('.//gml:coordinates', namespaces=self.root.nsmap).text
+        # - format to be shapely compliant
+        # - close the polygon by adding the first point at the end
+        formatted = coords.replace(' ', ';').replace(',', ' ').replace(';', ', ')
+        footprint = f"POLYGON(({','.join([formatted, formatted.split(',')[0]])}))"
+        # - reverse lat-lon
+        polygon = shapely.ops.transform(lambda x, y: (y, x), shapely.wkt.loads(footprint))
 
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-    products = ['S1A_IW_SLC__1SDV_20231030T163223_20231030T163250_050997_062607_ECF5']
-    workdir = pathlib.Path('/lustre/storeB/users/lukem/safe_to_netcdf_new')
-
-    products = ['S1A_EW_GRDH_1SDH_20231016T071258_20231016T071502_050787_061EE6_78D6']
-
-    for product in products:
-
-        outdir = workdir / product
-        outdir.parent.mkdir(parents=False, exist_ok=True)
-        conversion_object = Sentinel1_reader_and_NetCDF_converter(
-            product=product,
-            indir=outdir,
-            outdir=outdir)
-        conversion_object.write_to_NetCDF(outdir, 7)
+        super()._compute_bounding_box(polygon)
