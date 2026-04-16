@@ -87,6 +87,11 @@ S1C:
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1c'
   instrument: 'Synthetic Aperture Radar (C-band)'
   instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/sar_c_sentinel_1'
+S1D:
+  platform: 'Sentinel-1D'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1d'
+  instrument: 'Synthetic Aperture Radar (C-band)'
+  instrument_vocabulary: 'https://www.wmo-sat.info/oscar/instruments/view/sar_c_sentinel_1'
 
 S3:
   Conventions: 'CF-1.7, ACDD-1.3'
