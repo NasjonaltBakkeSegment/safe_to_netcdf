@@ -7,7 +7,7 @@ scipy
 pandas==2.2.2
 pyproj==3.6.1
 geopandas==1.1.2
-GDAL==3.4.1
+GDAL==3.13.0
 lxml
 setuptools
 pyyaml
