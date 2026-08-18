@@ -124,8 +124,9 @@ class S1SAFEFile(SAFEFile):
         for calXmlFile in self.xmlFiles['s1Level1CalibrationSchema']:
             # Retrieve pixels and lines
             polarisation, cal_pixels, cal_lines = self.readPixelsLines(calXmlFile)
-            self.xmlCalPixelLines[polarisation] = [np.array(cal_pixels, np.int16),
-                                                np.array(cal_lines, np.int16)]
+            # Use int32 to avoid overflow for large pixel/line indices
+            self.xmlCalPixelLines[polarisation] = [np.array(cal_pixels, np.int32),
+                                                   np.array(cal_lines, np.int32)]
 
             # Retrieve Look Up Tables
             for ct in calibrationTables:
@@ -744,9 +745,26 @@ class S1SAFEFile(SAFEFile):
                             noiseAzimuthVector_ = np.zeros(1)
                             noiseAzimuthVector_[:] = noiseAzimuthLUT[0]
 
-                        noiseAzimuthMatrix[firstAzimuthLine:lastAzimuthLine + 1,
-                        firstRangeSample:lastRangeSample + 1] = np.tile(noiseAzimuthVector_,
-                                                                        (numberOfSamples, 1)).T
+                        # Clip target indices to matrix bounds to avoid broadcasting errors
+                        row_start = max(0, firstAzimuthLine)
+                        row_end = min(self.ySize, lastAzimuthLine + 1)
+                        col_start = max(0, firstRangeSample)
+                        col_end = min(self.xSize, lastRangeSample + 1)
+
+                        tgt_rows = row_end - row_start
+                        tgt_cols = col_end - col_start
+
+                        if tgt_rows <= 0 or tgt_cols <= 0:
+                            continue
+
+                        # Offset into the interpolated azimuth vector
+                        row_offset = row_start - firstAzimuthLine
+                        az_vec_subset = noiseAzimuthVector_[row_offset:row_offset + tgt_rows]
+
+                        # Tile to shape (tgt_rows, tgt_cols)
+                        tiled = np.tile(az_vec_subset, (tgt_cols, 1)).T
+
+                        noiseAzimuthMatrix[row_start:row_end, col_start:col_end] = tiled
                     else:
                         noiseAzimuthMatrix[:] = 1
 
@@ -800,8 +818,27 @@ class S1SAFEFile(SAFEFile):
                             noiseRangeMatrix_[i, :] = intp1_line(lineIndex)
                         else:
                             noiseRangeMatrix_[i, :] = noiseRangeVectorList_[i]
-                    noiseRangeMatrix[lineIndex[0]:lineIndex[-1] + 1,
-                    sampleIndex[0]:sampleIndex[-1] + 1] = noiseRangeMatrix_.T
+                    # Clip target indices to matrix bounds to avoid broadcasting errors
+                    row_start = max(0, lineIndex[0])
+                    row_end = min(self.ySize, lineIndex[-1] + 1)
+                    col_start = max(0, sampleIndex[0])
+                    col_end = min(self.xSize, sampleIndex[-1] + 1)
+
+                    tgt_rows = row_end - row_start
+                    tgt_cols = col_end - col_start
+
+                    if tgt_rows <= 0 or tgt_cols <= 0:
+                        continue
+
+                    # noiseRangeMatrix_ shape: (numberOfSamples, numberOfLines)
+                    # We need the transposed slice matching (tgt_rows, tgt_cols)
+                    row_offset = row_start - lineIndex[0]
+                    col_offset = col_start - sampleIndex[0]
+
+                    sub_matrix = noiseRangeMatrix_.T[row_offset:row_offset + tgt_rows,
+                                                     col_offset:col_offset + tgt_cols]
+
+                    noiseRangeMatrix[row_start:row_end, col_start:col_end] = sub_matrix
 
         chunk_size = 100
         noiseCorrectionMatrix_ = multiply_2d_arrays_in_chunks(noiseRangeMatrix, noiseAzimuthMatrix, chunk_size)
