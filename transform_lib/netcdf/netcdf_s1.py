@@ -26,35 +26,82 @@ class S1NetCDFFile(NetCDFFile):
         complevel=self.compression_level, chunksizes=self.chunk_size[1:])
 
     def add_raw_measurement_layers(self, safe_file):
-
         for i in range(1, safe_file.src.RasterCount + 1):
             band = safe_file.src.GetRasterBand(i)
             band_metadata = band.GetMetadata()
             try:
-                varName = 'Amplitude_%s' % band_metadata['POLARISATION']
+                baseName = 'Amplitude_%s' % band_metadata['POLARISATION']
             except:
-                varName = 'Amplitude_%s' % band_metadata['POLARIZATION']
+                baseName = 'Amplitude_%s' % band_metadata['POLARIZATION']
 
-            self.variables[varName] = self.ncout.createVariable(
-                varName, 'u2', ('time', 'y', 'x',),
-                fill_value=0, zlib=True, complevel=self.compression_level,
-                chunksizes=self.chunk_size
-            )
-            try:
-                self.variables[varName].long_name = 'Amplitude %s-polarisation' % band_metadata['POLARIZATION']
-            except:
-                self.variables[varName].long_name = 'Amplitude %s-polarisation' % band_metadata['POLARISATION']
-            try:
-                self.variables[varName].polarisation = "%s" % band_metadata['POLARIZATION']
-            except:
-                self.variables[varName].polarisation = "%s" % band_metadata['POLARISATION']
+            # Read array robustly
+            arr = band.ReadAsArray()
 
-            self.write_variable_with_preprocessing(
-                varName, band.GetVirtualMemArray(),
-                process_chunk=None,
-                workers=8,
-                sync_every=None,
-            )
+            # If complex (SLC), store real and imaginary parts separately
+            if np.iscomplexobj(arr):
+                real_name = f"{baseName}_real"
+                imag_name = f"{baseName}_imag"
+
+                self.variables[real_name] = self.ncout.createVariable(
+                    real_name, 'f4', ('time', 'y', 'x',),
+                    fill_value=0.0, zlib=True, complevel=self.compression_level,
+                    chunksizes=self.chunk_size
+                )
+                self.variables[imag_name] = self.ncout.createVariable(
+                    imag_name, 'f4', ('time', 'y', 'x',),
+                    fill_value=0.0, zlib=True, complevel=self.compression_level,
+                    chunksizes=self.chunk_size
+                )
+
+                try:
+                    longpol = band_metadata['POLARIZATION']
+                except Exception:
+                    longpol = band_metadata.get('POLARISATION', '')
+
+                self.variables[real_name].long_name = f"Real part of complex samples ({longpol})"
+                self.variables[imag_name].long_name = f"Imaginary part of complex samples ({longpol})"
+                self.variables[real_name].polarisation = self.variables[imag_name].polarisation = longpol
+
+                # Write real and imaginary parts
+                self.write_variable_with_preprocessing(real_name, np.real(arr).astype(np.float32),
+                                                       process_chunk=None, workers=8, sync_every=None)
+                self.write_variable_with_preprocessing(imag_name, np.imag(arr).astype(np.float32),
+                                                       process_chunk=None, workers=8, sync_every=None)
+
+            else:
+                # Non-complex (e.g., GRD). Preserve reasonable dtype mapping and behavior
+                try:
+                    pol = band_metadata['POLARIZATION']
+                except Exception:
+                    pol = band_metadata.get('POLARISATION', '')
+                varName = f"{baseName}"
+
+                # Determine netCDF dtype and ensure array is suitable
+                if arr.dtype == np.uint16:
+                    nc_dtype = 'u2'
+                elif arr.dtype == np.int16:
+                    nc_dtype = 'i2'
+                elif arr.dtype == np.uint8:
+                    nc_dtype = 'u1'
+                elif arr.dtype == np.int32:
+                    nc_dtype = 'i4'
+                else:
+                    nc_dtype = 'f4'
+                    arr = arr.astype(np.float32)
+
+                self.variables[varName] = self.ncout.createVariable(
+                    varName, nc_dtype, ('time', 'y', 'x',),
+                    fill_value=0, zlib=True, complevel=self.compression_level,
+                    chunksizes=self.chunk_size
+                )
+                try:
+                    self.variables[varName].long_name = f"Amplitude {pol}-polarisation"
+                except:
+                    self.variables[varName].long_name = f"Amplitude {pol}-polarisation"
+                self.variables[varName].polarisation = pol
+
+                self.write_variable_with_preprocessing(varName, arr,
+                                                       process_chunk=None, workers=8, sync_every=None)
 
     def add_calibration_layers(self, safe_file):
         for calibration in safe_file.xmlCalLUTs:

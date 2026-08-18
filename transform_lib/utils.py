@@ -14,7 +14,7 @@ def xml_read(xml_file):
         lxml.etree._Element or None if file missing
     """
     if not Path(xml_file).is_file():
-        return None
+        raise FileNotFoundError(f"XML file not found: {xml_file}")
     tree = ET.parse(str(xml_file))
     root = tree.getroot()
     return root
